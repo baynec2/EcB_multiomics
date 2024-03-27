@@ -1,0 +1,559 @@
+---
+title: "fixing files"
+output: html_document
+date: "2024-03-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+## Fixing the stats files ##
+ protein_to_gene = readr::read_csv("../../../00_r_input_data/protein_id_to_gene.csv")
+  gene_description = read_csv("../../../00_r_input_data/all_protein_annotations.csv")
+  ## Loading all the data that will be needed ### 
+    healthy = read_csv("../../../01_r_processed_data/Infected_vs_Healthy.csv") %>% 
+      left_join(protein_to_gene,by = c("uniprotid" = "ProteinID")) %>% 
+      left_join(gene_description, by = c("uniprotid" = "Entry")) %>% 
+      mutate(url = paste0("https://www.uniprot.org/uniprotkb/",uniprotid,"/entry")) %>% 
+      rename(Feature = Gene,
+             Description = Protein.names)
+    
+    
+    EcB = read_csv("../../../01_r_processed_data/faecalis_v_faecium.csv") %>% 
+      left_join(protein_to_gene,by = c("uniprotid" = "ProteinID"))%>% 
+      left_join(gene_description, by = c("uniprotid" = "Entry")) %>% 
+      mutate(url = paste0("https://www.uniprot.org/uniprotkb/",uniprotid,"/entry")) %>% 
+      rename(Feature = Gene,
+             Description = Protein.names)
+    
+    
+    mortality = read_csv("../../../01_r_processed_data/death_vs_life.csv") %>% 
+      select(-Gene) %>% 
+      left_join(protein_to_gene,by = c("uniprotid" = "ProteinID"))%>% 
+      left_join(gene_description, by = c("uniprotid" = "Entry")) %>% 
+      mutate(url = paste0("https://www.uniprot.org/uniprotkb/",uniprotid,"/entry")) %>% 
+      rename(Feature = Gene,
+             Description = Protein.names)
+    
+    
+   
+write_csv(healthy,"Infected_vs_Healthy.csv")
+write_csv(EcB,"faecalis_v_faecium.csv")
+write_csv(mortality,"death_vs_life.csv")
+    
+```
+
+```{r}
+## Fixing the continuous data files ## 
+
+data = read_csv("../../../01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+
+#Loading in mapping file
+mapping = readxl::read_excel("../../../00_r_input_data/proteomics_sample_mapping.xlsx") %>% 
+  mutate(sample_id = paste0("plex",plex_number,".",TMT_channel)) %>% 
+  select(sample_id,sample_name)
+
+# Loading in the clinical metadata 
+cmd = read_csv("../../../00_r_input_data/clinical_metadata.csv")
+
+
+mapping = inner_join(mapping,cmd,by = c("sample_name" = "sample_id"))
+
+#Loading in data
+
+
+data_md = inner_join(mapping,data,by = "sample_id")
+
+
+#Converting into a matrix
+f = data_md %>% 
+  dplyr::select(sample_name,condition,death_during_admission,Gene,Abundance) %>% 
+  dplyr::rename(Feature = Gene)
+
+
+
+
+write_csv(f,"protein_data.csv")
+
+```
+
+
+## Generating EFS ranking 
+
+```{r}
+### Healthy vs Infected ###
+
+pl = read_csv("protein_data.csv") 
+
+
+infected_healthy_l = pl %>% 
+  mutate(classlabels = case_when(condition %in% c("faecalis","faecium") ~ 1,
+                                   TRUE ~ 0))  %>% 
+  mutate(classlabels = as.logical(classlabels)) %>% 
+  # - messes up EFS for some reason, very annoying. 
+  mutate(Feature = gsub("-","_",Feature))
+
+infected_healthy_w = infected_healthy_l %>% 
+ tidyr::pivot_wider(names_from = Feature,
+              values_from = Abundance) %>% 
+  dplyr::select_if(~ !any(is.na(.))) %>% 
+  select(-1,-2) %>% 
+  #needs to be a dataframe or EFS freaks out. 
+  as.data.frame() 
+
+set.seed(2)
+
+## Running EFS ##
+ensemble_result = EFS::ensemble_fs(infected_healthy_w,classnumber = 1,cor_threshold = 0)
+
+
+## Getting EFS Result in Plotable Format
+long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "Gene") %>% 
+  #converting genes back to proper notation. 
+  mutate(Gene = gsub("_","-",Gene)) %>% 
+  rename(Feature = Gene)
+
+# Ranking Biomarkers
+top = long %>% 
+  group_by(Feature) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) %>% 
+  tibble::rowid_to_column(var = "rank")
+
+
+
+
+write_csv(top,"healthy_prot_EFS_rank.csv")
+
+
+
+### Faecalis vs Faecium ### 
+
+fvf = pl %>% 
+  filter(condition != "healthy") %>% 
+  mutate(classlabels = case_when(condition %in% c("faecalis") ~ 1,
+                                   TRUE ~ 0)) %>% 
+  mutate(classlabels = as.logical(classlabels)) %>% 
+  # - messes up EFS for some reason, very annoying. 
+  mutate(Feature = gsub("-","_",Feature))
+
+fvf_w = fvf %>% 
+ tidyr::pivot_wider(names_from = Feature,
+              values_from = Abundance) %>% 
+  dplyr::select_if(~ !any(is.na(.))) %>% 
+  select(-1,-2) %>% 
+  #needs to be a dataframe or EFS freaks out. 
+  as.data.frame() 
+
+set.seed(2)
+
+## Running EFS ##
+ensemble_result = EFS::ensemble_fs(fvf_w,classnumber = 1,cor_threshold = 0)
+
+
+## Getting EFS Result in Plotable Format
+long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "Gene") %>% 
+  #converting genes back to proper notation. 
+  mutate(Gene = gsub("_","-",Gene)) %>% 
+  rename(Feature = Gene)
+
+# Ranking Biomarkers
+top = long %>% 
+  group_by(Feature) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) %>% 
+  tibble::rowid_to_column(var = "rank")
+
+
+
+
+write_csv(top,"EcB_prot_EFS_rank.csv")
+
+
+
+### Mortality vs Survival ### 
+mvs = pl %>% 
+  filter(!is.na(death_during_admission)) %>% 
+  # - messes up EFS for some reason, very annoying. 
+  mutate(Feature = gsub("-","_",Feature))
+
+mvs_w = mvs %>% 
+ tidyr::pivot_wider(names_from = Feature,
+              values_from = Abundance) %>% 
+  dplyr::select_if(~ !any(is.na(.))) %>% 
+  select(-1,-2) %>% 
+  #needs to be a dataframe or EFS freaks out. 
+  as.data.frame() 
+
+set.seed(2)
+
+## Running EFS ##
+ensemble_result = EFS::ensemble_fs(mvs_w,classnumber = 1,cor_threshold = 0)
+
+
+## Getting EFS Result in Plotable Format
+long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "Gene") %>% 
+  #converting genes back to proper notation. 
+  mutate(Gene = gsub("_","-",Gene)) %>% 
+  rename(Feature = Gene)
+
+# Ranking Biomarkers
+top = long %>% 
+  group_by(Feature) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) %>% 
+  tibble::rowid_to_column(var = "rank")
+
+
+
+
+write_csv(top,"mortality_prot_EFS_rank.csv")
+
+
+
+```
+```{r}
+
+      vp %>% ggboxplot(x = "condition",
+                      y = "Abundance",
+                      facet.by = "Feature",
+                      scales = "free")+
+        #facet_wrap(~condition, scales = "free") +
+        stat_pvalue_manual(stat,label = "p.signif")+
+        ggprism::theme_prism()
+```
+
+# Generating stats for all the data
+
+```{r}
+gnps_annotations = read_csv("../../../../Manuscript_v2/00_r_input_data/gnps_annotations.csv")
+normalized_data = read_csv("normalized_metabolomics.csv")
+
+### Infected vs Healthy ###
+
+  stat = normalized_data %>%
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ infection_status) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+
+  # Extracting the values for each feature for healthy patients
+healthy = normalized_data %>% 
+  filter(infection_status == "uninfected") %>% 
+  group_by(row_id) %>% 
+  summarise(healthy = mean(norm_value))
+
+
+# Extracting the values for each feature for infected patients
+infected = normalized_data %>% 
+  filter(infection_status == "infected") %>% 
+  group_by(row_id) %>% 
+  summarise(infected = mean(norm_value))
+
+
+## Combining the healthy and infected so we can caclulated the log2fc ##
+log2fc = inner_join(healthy,infected,by = "row_id") %>% 
+  mutate(log2fc_infected_healthy = log2(infected/healthy))
+  
+
+## Joining the statistics and log2 fold change ##  
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  left_join(gnps_annotations, by = "row_id") %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE)) %>% 
+  select(row_id = row_id,Feature = compound_name_cleaned,log2FC = log2fc_infected_healthy,pvalue = p,adj.pvalue = p.adj_fdr,annotated) %>% 
+  mutate(url = paste0("https://pubchem.ncbi.nlm.nih.gov/compound/",Feature)) %>% 
+  mutate(url = case_when(url == "https://pubchem.ncbi.nlm.nih.gov/compound/NA" ~
+                           "https://pubchem.ncbi.nlm.nih.gov/compound/no_name_in_data",
+                         TRUE ~ url))
+
+
+write_csv(vp,"healthy_vs_infected_metabolomics.csv")
+  
+
+
+
+### Faecalis vs Faecium ###
+  stat = normalized_data %>%
+    filter(condition %in% c("faecalis","faecium")) %>% 
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ condition) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+  
+  # Calculating log2fc
+log2fc_data = normalized_data %>%  
+    dplyr::select(metabolomics_id,row_id,condition,norm_value) 
+  
+  # Extracting just the faecalis data
+faecalis = log2fc_data %>% 
+  filter(condition == "faecalis") %>% 
+  group_by(row_id) %>% 
+  summarise(faecalis = mean(norm_value))
+
+# Extracting just the faecium data 
+faecium = log2fc_data %>% 
+  filter(condition == "faecium") %>% 
+  group_by(row_id) %>% 
+  summarise(faecium = mean(norm_value))
+
+# Calculating log2fc
+log2fc = inner_join(faecalis,faecium,by = "row_id") %>% 
+  mutate(log2fc_faecalis_faecium = log2(faecalis/faecium))
+  
+# Combining log2fc and statistics 
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  left_join(gnps_annotations, by = "row_id") %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE)) %>% 
+  select(row_id = row_id,Feature = compound_name_cleaned,log2FC = log2fc_faecalis_faecium,pvalue = p,adj.pvalue = p.adj_fdr,annotated) %>% 
+  mutate(url = paste0("https://pubchem.ncbi.nlm.nih.gov/compound/",Feature)) %>% 
+  mutate(url = case_when(url == "https://pubchem.ncbi.nlm.nih.gov/compound/NA" ~
+                           "https://pubchem.ncbi.nlm.nih.gov/compound/no_name_in_data",
+                         TRUE ~ url))
+
+
+write_csv(vp,"faecalis_v_faecium_metabolomics.csv")
+
+### Mortality vs Survival ###  
+  
+    stat = normalized_data %>% 
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ death_during_admission) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+    
+    # Calculating log2fc
+log2fc_data = normalized_data %>%  
+    dplyr::select(metabolomics_id,row_id,death_during_admission,norm_value) 
+
+
+# Extracting just the faecalis data
+dead = log2fc_data %>% 
+  filter(death_during_admission == TRUE) %>% 
+  group_by(row_id) %>% 
+  summarise(dead = mean(norm_value))
+
+# Extracting just the faecium data 
+live = log2fc_data %>% 
+  filter(death_during_admission == FALSE) %>% 
+  group_by(row_id) %>% 
+  summarise(live = mean(norm_value))
+
+# Calculating log2fc
+log2fc = inner_join(dead,live,by = "row_id") %>% 
+  mutate(log2fc_live_dead = log2(live/dead))
+  
+# Combining log2fc and statistics 
+# Combining log2fc and statistics 
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  left_join(gnps_annotations, by = "row_id") %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE)) %>% 
+  select(row_id = row_id,Feature = compound_name_cleaned,log2FC = log2fc_live_dead,pvalue = p,adj.pvalue = p.adj_fdr,annotated) %>% 
+  mutate(url = paste0("https://pubchem.ncbi.nlm.nih.gov/compound/",Feature)) %>% 
+  mutate(url = case_when(url == "https://pubchem.ncbi.nlm.nih.gov/compound/NA" ~
+                           "https://pubchem.ncbi.nlm.nih.gov/compound/no_name_in_data",
+                         TRUE ~ url))
+
+write_csv(vp,"death_vs_life_metabolomics.csv")
+
+```
+
+
+## Generating EFS Ranking for Metabolomics
+
+```{r}
+
+normalized_data = read_csv("../../../01_r_processed_data/normalized_metabolomics.csv")
+
+
+### Infected vs Healthy ### 
+## Switching to the wide format ### 
+norm_wide = normalized_data %>%
+  select(-row_m_z,-row_retention_time,-value) %>% 
+  tidyr::pivot_wider(names_from = row_id,values_from = norm_value)
+
+## Looking for only columns that were annotated ## 
+gnps_and_in_norm = intersect(unique(gnps_annotations$row_id), colnames(norm_wide))
+
+gnps_annotated_metabolites = norm_wide %>% 
+  as.data.frame() %>% 
+  select(condition,gnps_and_in_norm)
+
+## Extracting the numeric data ##
+efs_sel = gnps_annotated_metabolites %>% 
+  mutate(classlabels = case_when(condition %in% c("faecalis","faecium") ~ 0,
+                           TRUE ~ 1)) %>% 
+  select(classlabels,2:length(.)) %>% 
+   #absolutely needs to be a data frame and not a tibble for EFS package
+  as.data.frame()
+
+# Seting seed incase this isn't done internally in EFS
+set.seed(2)
+
+## Running EFS feature selection ##
+ensemble_result = EFS::ensemble_fs(efs_sel,
+                                   classnumber = 1,cor_threshold = 0)
+
+## Getting EFS Result in Plotable Format
+long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "row_id") %>% 
+  left_join(gnps_annotations,by = "row_id") %>% 
+  rename(Feature = row_id) 
+
+# Ranking Biomarkers
+top = long %>% 
+  group_by(Feature,compound_name_cleaned) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) %>% 
+  tibble::rowid_to_column(var = "rank") %>% 
+  select(rank,Feature,compound_name_cleaned,sum)
+
+
+
+
+write_csv(top,"infected_metabolomics_EFS.csv")
+```
+
+
+
+Faecalis vs Faecium 
+```{r}
+
+normalized_data = read_csv("../../../01_r_processed_data/normalized_metabolomics.csv")
+
+## Reading in the normalized data ## 
+normalized_data = normalized_data %>% 
+#Removing reduntant RIDs. These were found to be the same as other top biomarkers
+  filter(row_id != "RID_8856",
+         row_id != "RID_22529",
+         row_id != "RID_22270",
+         row_id != "RID_9436")
+
+## Switching to the wide format ### 
+norm_wide = normalized_data %>%
+  select(-row_m_z,-row_retention_time,-value) %>% 
+  tidyr::pivot_wider(names_from = row_id,values_from = norm_value)
+
+## Looking for only columns that were annotated ## 
+gnps_and_in_norm = intersect(unique(gnps_annotations$row_id), colnames(norm_wide))
+
+gnps_annotated_metabolites = norm_wide %>% 
+  as.data.frame() %>% 
+  select(condition,gnps_and_in_norm)
+
+## Extracting the numeric data ##
+efs_sel = gnps_annotated_metabolites %>% 
+  filter(condition %in% c("faecalis","faecium")) %>% 
+  mutate(classlabels = case_when(condition == "faecalis" ~ 0,
+                           TRUE ~ 1)) %>% 
+  select(classlabels,2:length(.)) %>% 
+   #absolutely needs to be a data frame and not a tibble for EFS package
+  as.data.frame()
+
+# Seting seed incase this isn't done internally in EFS
+set.seed(2)
+
+## Running EFS feature selection ##
+ensemble_result = EFS::ensemble_fs(efs_sel,
+                                   classnumber = 1,
+                                   cor_threshold = 0)
+
+## Getting EFS Result in Plotable Format
+long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "row_id") %>% 
+  left_join(gnps_annotations,by = "row_id") %>% 
+  rename(Feature = row_id) 
+
+# Ranking Biomarkers
+top = long %>% 
+  group_by(Feature,compound_name_cleaned) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) %>% 
+  tibble::rowid_to_column(var = "rank") %>% 
+  select(rank,Feature,compound_name_cleaned,sum)
+
+write_csv(top,"EcB_metabolomics_EFS.csv")
+
+
+```
+
+
+Mortality
+
+```{r}
+normalized_data = read_csv("../../../01_r_processed_data/normalized_metabolomics.csv")
+
+# Switching to the wide format ### 
+norm_wide = normalized_data %>%
+  select(-row_m_z,-row_retention_time,-value) %>% 
+  tidyr::pivot_wider(names_from = row_id,values_from = norm_value)
+
+## Looking for only columns that were annotated ## 
+gnps_and_in_norm = intersect(unique(gnps_annotations$row_id), colnames(norm_wide))
+
+gnps_annotated_metabolites = norm_wide %>% 
+  as.data.frame() %>% 
+  select(death_during_admission,gnps_and_in_norm) %>% 
+  filter(!is.na(death_during_admission))
+
+# Seting seed incase this isn't done internally in EFS
+set.seed(2)
+
+## Running EFS feature selection ##
+ensemble_result = EFS::ensemble_fs(gnps_annotated_metabolites,
+                                   classnumber = 1,cor_threshold = 0)
+
+## Getting EFS Result in Plotable Format
+long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "row_id") %>% 
+  left_join(gnps_annotations,by = "row_id") %>% 
+  rename(Feature = row_id) 
+
+# Ranking Biomarkers
+top = long %>% 
+  group_by(Feature,compound_name_cleaned) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) %>% 
+  tibble::rowid_to_column(var = "rank") %>% 
+  select(rank,Feature,compound_name_cleaned,sum)
+
+write_csv(top,"mortality_metabolomics_EFS.csv")
+
+```
+
+# Continuous data for metabolomics 
+
+
+```{r}
+
+gnps_annotations = read_csv("../../../00_r_input_data/gnps_annotations.csv") %>% 
+  select(row_id, compound_name_cleaned)
+ 
+data = read_csv("../../../01_r_processed_data/normalized_metabolomics.csv") %>% 
+  select(row_id,sample_id,condition,death_during_admission,Abundance = norm_value) %>% 
+  inner_join(gnps_annotations, by = "row_id") %>% 
+  rename(Feature = row_id) %>% 
+  select(Feature,compound_name_cleaned, sample_name = sample_id, everything())
+
+
+write_csv(data,"normalized_metabolomics.csv")
+```
+

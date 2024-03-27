@@ -1,0 +1,7 @@
+*.csv filter=lfs diff=lfs merge=lfs -text
+01_r_processed_data/quant_msstats_feature_level_data.csv filter=lfs diff=lfs merge=lfs -text
+00_r_input_data/gene_presence_absence_long.csv filter=lfs diff=lfs merge=lfs -text
+[[:space:]]00_r_input_data/msstats.csv filter=lfs diff=lfs merge=lfs -text
+00_r_input_data/msstats.csv filter=lfs diff=lfs merge=lfs -text
+01_r_processed_data/unnormalized_metabolomics.csv filter=lfs diff=lfs merge=lfs -text
+01_r_processed_data/normalized_metabolomics.csv filter=lfs diff=lfs merge=lfs -text

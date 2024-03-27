@@ -1,0 +1,13 @@
+ggplot2
+dplyr
+readr
+tidyr
+circlize
+dendextend
+clusterProfiler
+gridExtra
+purrr
+rstatix
+EFS
+ggpubr
+pheatmap
