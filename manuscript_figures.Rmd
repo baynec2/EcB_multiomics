@@ -1,0 +1,4786 @@
+---
+title: "Manuscript Figures"
+author: "Charlie Bayne"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+        theme: cosmo
+        toc: true
+        toc_depth: 6
+        toc_float:
+            collapsed: true
+            smooth_scroll: true
+        code_folding: hide
+        highlight: tango
+        df_print: paged
+---
+
+```{r setup, include=FALSE, warning= FALSE}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(tidyr)
+library(purrr)
+
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message = FALSE,cache = TRUE)
+
+#Setting ggplot2 theme, this isn't working for some reason
+theme_set(
+  ggprism::theme_prism()+
+  theme(plot.title = element_text(hjust = 0.5))
+  )
+
+#Setting ggplot2 theme, this one works
+#theme_set(
+ # theme_classic()+
+  #theme(plot.title = element_text(hjust = 0.5))
+  #)
+```
+
+```{r}
+#Loading in mapping data that will allow us to go from Uniprot ID to gene ID. 
+# Will use this to fix the labels. 
+# Next time make sure to have fragpipe give gene level data instead of by uniprot id.
+protein_to_gene = readr::read_csv("00_r_input_data/protein_id_to_gene.csv")
+```
+
+# Figure 1 - Overview of proteomics and metabolomics data
+
+## A - Description of the overall study.
+
+This figure was generated in Biorender.
+
+## B- Characteristics of patient samples.
+
+```{r,fig.height = 2.5, fig.width = 8.268}
+### Figure 1b ###
+
+# Reading in the cleaned clinical metadata to start to make plots
+clinical_metadata = readr::read_csv("00_r_input_data/clinical_metadata.csv") 
+
+
+p0 = clinical_metadata %>% 
+  ggplot(aes(condition,fill = condition))+
+  geom_histogram(stat = "count")+
+  scale_fill_viridis_d()+
+  ggtitle("Condition")+
+  ggprism::theme_prism(base_size = 6)
+
+p0
+
+# Defining the columns that we want to show patient charachteristics for
+columns_to_look_at = c("gender", "charleson_index", "bacteremia_duration","gender","day_of_blood_draw","sensitive_to_vancomycin","condition","death_during_admission")
+
+# Filtering the data to the relevant columns
+sel = clinical_metadata %>% 
+  select(sample_id,columns_to_look_at,pathogen) %>% 
+  filter(!is.na(pathogen))
+
+# Plotting Gender by Pathogen
+p1 = sel %>% 
+  ggplot(aes(gender,fill = pathogen))+
+  geom_histogram(stat = "count")+
+  scale_fill_viridis_d(end = 0.5)+
+  ggtitle("Gender") +
+  ggprism::theme_prism(base_size = 6)
+
+
+
+
+#Plotting Charleson index by Pathogen
+p2 = sel %>% 
+  ggplot(aes(charleson_index,fill = pathogen))+
+  geom_histogram(stat = "count")+
+  scale_fill_viridis_d(end = 0.5)+
+  ggtitle("Charleson Index")+
+  ggprism::theme_prism(base_size = 6)
+
+
+
+
+# Bacteremia Durration
+
+p3 = sel %>% 
+  ggplot(aes(bacteremia_duration,fill = pathogen))+
+  geom_histogram(stat = "count")+
+  scale_fill_viridis_d(end = 0.5)+
+  ggtitle("Bacteremia Duration")+
+  ggprism::theme_prism(base_size = 6)
+
+
+# Day of Blood Draw 
+
+p4 = sel %>% 
+  ggplot(aes(day_of_blood_draw,fill = pathogen))+
+  geom_histogram(stat = "count")+
+  scale_fill_viridis_d(end = 0.5)+
+  ggtitle("Day of Blood Draw")+
+  ggprism::theme_prism(base_size = 6)
+
+
+# Sensitivity to Vancomycin
+
+p5 = sel %>% 
+  ggplot(aes(sensitive_to_vancomycin,fill = pathogen))+
+  geom_histogram(stat = "count")+
+  scale_fill_viridis_d(end = 0.5)+
+  ggtitle("Vancomycin Sensitivity")+
+  ggprism::theme_prism(base_size = 6)
+
+
+
+# Sensitivity to Vancomycin
+
+p6 = sel %>% 
+  ggplot(aes(death_during_admission,fill = pathogen))+
+  geom_histogram(stat = "count")+
+  scale_fill_viridis_d(end = 0.5)+
+  ggtitle("Death During Admission")+
+  ggprism::theme_prism(base_size = 6)
+
+
+
+
+
+f1b = ggpubr::ggarrange(p1,p2,p3,p4,p5,p6,common.legend = TRUE,legend = "none",ncol = 6,font.label = list(size = 14))
+
+f1b
+
+ggsave("02_figures/f1_overview_of_study/f1b.pdf",plot = f1b, height = 2.5, width = 8.268,units = "in")
+```
+
+## C- Overall clustering of proteomoics data.
+
+```{r,fig.height = 8, fig.width = 16}
+### Figure 1C ###
+
+#Loading in mapping file
+mapping = readxl::read_excel("../proteomics/sample_mapping.xlsx")
+
+# Loading in the clinical metadata 
+cmd = read_csv("00_r_input_data/clinical_metadata.csv") %>% 
+  select(-condition)
+
+
+mapping = inner_join(mapping,cmd,by = c("sample_name" = "sample_id"))
+
+#Loading in data
+data = read_delim("../proteomics/fragpipe_output_fixed_labels/tmt-report/abundance_gene_MD.tsv")
+
+#Converting to long format
+long = data %>% 
+  pivot_longer(6:length(.),names_to = "sample_name")
+
+#Combining data and mapping
+all = inner_join(mapping,long,by="sample_name")
+
+#Converting into a matrix
+mat = all %>% 
+  dplyr::select(-ProteinID,-NumberPSM,-ReferenceIntensity,-MaxPepProb) %>% 
+  pivot_wider(values_from = value,names_from = Index)
+
+#Extracting only the data
+dat = mat %>% 
+  dplyr::select(81:length(.)) %>% 
+  dplyr::select_if(~ !any(is.na(.)))
+
+#Extracting only the metadata
+md = mat %>% 
+  dplyr::select(1:81) 
+
+#setting row names so we can look at the labels if need be
+rownames(dat) <- paste0(md$sample_name)
+
+# Calculating distances
+d = dist(dat)
+
+# Showing as a dendrogram
+dend = as.dendrogram(hclust(d,method = "ward.D2"))
+
+library(circlize)
+library(dendextend)
+
+# adding color by the type of infection
+colors_to_use = viridis::viridis(3)[as.numeric(as.factor(md$condition))]
+
+# getting everything in the correct order 
+colors_to_use = colors_to_use[order.dendrogram(dend)]
+
+# adding mortality
+colors_to_use_2 = c("#000000","#FF0000")[as.numeric(as.factor(md$death_during_admission))]
+
+colors_to_use_2 = colors_to_use_2[order.dendrogram(dend)]
+
+
+# adding color to the dendrogram branches
+dend = branches_color(dend,col = colors_to_use) %>% 
+  set("branches_lwd", 8) 
+  
+
+labels_colors(dend) = colors_to_use_2
+
+
+
+#this is in circular form
+
+pdf("02_figures/f1_overview_of_study/f1c.pdf")
+circlize_dendrogram(dend,
+                    labels_track_height = NA,
+                    dend_track_height = 0.5,
+                    labels = TRUE)
+dev.off()
+
+
+circlize_dendrogram(dend,
+                    labels_track_height = NA,
+                    dend_track_height = 0.5,
+                    labels = TRUE) 
+  
+```
+# stats for dendrogram by k = 2 cluster
+```{r,fig.height = 8, fig.width = 16}
+
+circlize_dendrogram(dend %>% color_branches(k = 2),
+                    labels_track_height = NA,
+                    dend_track_height = 0.5,
+                    labels = TRUE) 
+stats 
+```
+
+## D- Overall clustering of meatabolomics data.
+
+```{r,fig.height = 8, fig.width = 16}
+### Figure 1 D ### 
+
+## Reading in data ##
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+
+
+##Why do we have different numbers of healthy?
+
+test = normalized_data %>% 
+  select(sample_id,condition) %>% 
+  distinct() %>% 
+  group_by(condition) %>% 
+  summarise(n = n())
+
+## Transforming the data ##
+norm_wide = normalized_data %>%
+  select(-row_m_z,-row_retention_time,-value) %>% 
+  tidyr::pivot_wider(names_from = row_id,values_from = norm_value)
+
+
+norm_dat = norm_wide %>% 
+  dplyr::select(78:length(.)) 
+
+norm_md = norm_wide %>% 
+  dplyr::select(1:77)  
+
+rownames(norm_md) = norm_md$sample_id
+
+## Plotting the overal clustering ## 
+
+rownames(norm_dat) = norm_md$sample_id
+
+d = dist(norm_dat)
+
+dend = as.dendrogram(hclust(d, "ward.D2"))
+
+#dend = as.dendrogram(hclust(d))
+
+library(circlize)
+library(dendextend)
+
+# let's add some color:
+colors_to_use = viridis::viridis(3)[as.numeric(as.factor(norm_md$condition))]
+
+#getting in the same order as dendrogram
+colors_to_use = colors_to_use[order.dendrogram(dend)]
+
+# adding mortality
+colors_to_use_2 = c("#000000","#FF0000")[as.numeric(as.factor(norm_md$death_during_admission))]
+
+colors_to_use_2 = colors_to_use_2[order.dendrogram(dend)]
+
+# Now we can color the brancehes
+dend = branches_color(dend,col = colors_to_use,) %>% 
+  set("branches_lwd", 8)
+
+labels_colors(dend) = colors_to_use_2
+
+
+pdf("02_figures/f1_overview_of_study/f1d.pdf")
+circlize_dendrogram(dend,
+                    labels_track_height = NA,
+                    dend_track_height = 0.5,
+                    labels = TRUE)
+dev.off()
+
+circlize_dendrogram(dend,
+                    labels_track_height = NA,
+                    dend_track_height = 0.5,
+                    labels = TRUE)
+```
+
+# Figure 2 - Host Response Bacteremias Proteomics
+
+## A- Volcano plot of healthy vs Infected EcB
+
+### Data Processing
+```{r}
+# Read MSstats.csv file.
+data = read_csv("00_r_input_data/msstats.csv")
+#Note that the condition of the bridge channel needs to be labeled as Norm
+annotation = read_csv("00_r_input_data/MSstatsTMT_annotation.csv") 
+
+mstats = MSstatsTMT::PhilosophertoMSstatsTMTFormat(input = data,annotation)
+
+stats = MSstatsTMT::PhilosophertoMSstatsTMTFormat(input = data,annotation)
+
+
+# use MSstats for protein summarization
+quant.msstats = MSstatsTMT::proteinSummarization(stats,
+                                      method="msstats",
+                                      global_norm=TRUE,
+                                      reference_norm=TRUE,
+                                      remove_norm_channel = TRUE,
+                                      remove_empty_channel = TRUE)
+
+
+
+# Taking the pl_data and formatting appropriately
+pl_data = quant.msstats$ProteinLevelData %>% 
+  tidyr::separate(Protein, c("orientation","uniprotid","locus"),sep ="\\|") %>%
+  # Converting to gene name
+  inner_join(protein_to_gene,by = c("uniprotid" = "ProteinID")) %>% 
+  mutate(sample_id = paste0(Mixture,".",Channel))
+
+write_csv(pl_data,"01_r_processed_data/quant_msstats_protein_level_data.csv")
+  
+write_csv(quant.msstats$FeatureLevelData,"01_r_processed_data/quant_msstats_feature_level_data.csv")
+
+### Preforming the statistics ### 
+test.pairwise = MSstatsTMT::groupComparisonTMT(quant.msstats, moderated = TRUE)
+
+
+## All groups ## 
+res = test.pairwise$ComparisonResult %>% 
+  separate(Protein, c("orientation","uniprotid","locus"),sep ="\\|")
+
+write_csv(res,"01_r_processed_data/groupComparison_results.csv")
+
+
+## Faecalis v Healthy
+faecalis_v_healthy = res %>% 
+  filter(Label == "Faecalis vs Healthy")
+
+write_csv(faecalis_v_healthy,"01_r_processed_data/faecalis_v_healthy.csv")
+  
+
+## Faecium v Healthy 
+healthy_v_faecium = res %>% 
+  filter(Label == "Healthy vs Faecium")
+
+write_csv(healthy_v_faecium,"01_r_processed_data/healthy_v_faecium.csv")
+  
+
+## Faecalis v Faecium ##
+faecalis_v_faecium = res %>% 
+  filter(Label == "Faecalis vs Faecium")
+
+
+write_csv(faecalis_v_faecium,"01_r_processed_data/faecalis_v_faecium.csv")
+```
+
+
+### How many are differentially abundant?
+
+```{r}
+infected_vs_healthy_plot %>% 
+  mutate(sign = case_when(log2FC < 0 ~ "negative",
+                          TRUE ~ "positive")) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  group_by(sign) %>% 
+  summarise(n = n())
+
+
+```
+
+```{r}
+infected_vs_healthy = readr::read_csv("01_r_processed_data/Infected_vs_Healthy.csv")
+faecalis_v_healthy = readr::read_csv("01_r_processed_data/faecalis_v_healthy.csv")
+healthy_v_faecium = readr::read_csv("01_r_processed_data/healthy_v_faecium.csv")
+
+
+both_sig = infected_vs_healthy %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  pull(uniprotid)
+
+# Defining significant proteins in faecalis
+faecalis_sig = faecalis_v_healthy %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  pull(uniprotid)
+  
+# Defining significant proteins in faecium
+faecium_sig = healthy_v_faecium %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  pull(uniprotid) 
+
+library(VennDiagram)
+
+venn.diagram(
+        x = list(both_sig, faecalis_sig, faecium_sig),
+        category.names = c("E.facalis + E.faecium" , "E.faecalis " , "E.faecium"),
+        filename = "../Manuscript/02_figures/f2_infection_v_healthy_proteomics/f2a-venn_diagram.svg",
+        output=TRUE,
+        
+        # Output features
+        imagetype="svg" ,
+        height = 5 , 
+        width = 5 , 
+        units = "in",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = myCol,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.pos = c(-27, 27, 135),
+        cat.dist = c(0.055, 0.055, 0.085),
+        cat.fontfamily = "sans",
+        rotation = 1
+)
+
+```
+
+## B - Heat map by GO Terms 
+
+
+### Processing/ Generation of related supplementary figures
+
+
+##### EcB
+
+
+###### Up. 
+
+Network analysis of proteins that are shared between faecalis and faecium relative to healthy when considered alone and increased in infected samples
+
+```{r,fig.height = 10, fig.width = 10}
+##Loading all the go stuff
+
+#Getting all the go annotations 
+go = read_csv("00_r_input_data/go_annotations.csv") %>% 
+  dplyr::select(1,length(.)) %>% 
+  tidyr::separate_rows(Gene.Ontology.IDs, sep = ';') %>% 
+  dplyr::mutate(Gene.Ontology.IDs = gsub(" ","",Gene.Ontology.IDs)) %>% 
+  # Going from Protein ID to gene ID
+  left_join(protein_to_gene,by = c("Entry" = "ProteinID")) %>% 
+  select(-Entry) %>% 
+  select(Entry = Gene,Gene.Ontology.IDs)
+
+#usng enricher
+TERM2GENE = go %>% 
+  dplyr::select(TERM = Gene.Ontology.IDs,GENE = Entry) %>% 
+  as.data.frame() 
+
+TERM2NAME = AnnotationDbi::select(GO.db::GO.db,keys = unique(TERM2GENE$TERM),columns = c("TERM")) %>% 
+  as.data.frame()
+
+
+# Extracting the uniprotids up in infected and shared
+
+  infected_vs_healthy = readr::read_csv("01_r_processed_data/Infected_vs_Healthy.csv") %>% 
+  left_join(protein_to_gene,by = c("uniprotid"= "ProteinID"))
+
+
+shared_up_in_infected = infected_vs_healthy %>% 
+  filter(log2FC > 0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  pull(Gene)
+
+# Perfomring GO enrichment
+enrich = clusterProfiler::enricher(shared_up_in_infected,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME,
+         maxGSSize = 1000)
+
+DT::datatable(enrich@result)
+
+EcB_enrich_up = clusterProfiler::enricher(shared_up_in_infected,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME)
+
+up_ECB = clusterProfiler::cnetplot(enrich,
+                                categorySize="pvalue",
+                                circular = FALSE,
+                                categorySize="pvalue",
+                                cex_label_category = 0.9,
+                                showCategory = 100,
+                                cex_label_gene = 0.5
+                                )+
+  theme(legend.position = "none")
+
+up_ECB
+
+ggsave("03_supplemental/s2_networks_compared_to_healthy/up_ECB.pdf",up_ECB,height=10,width=10)
+```
+
+
+###### Down
+
+```{r,fig.height = 10, fig.width = 10}
+##Loading all the go stuff
+
+#Getting all the go annotations 
+go = read_csv("00_r_input_data/go_annotations.csv") %>% 
+  dplyr::select(1,length(.)) %>% 
+  tidyr::separate_rows(Gene.Ontology.IDs, sep = ';') %>% 
+  dplyr::mutate(Gene.Ontology.IDs = gsub(" ","",Gene.Ontology.IDs)) %>% 
+    # Going from Protein ID to gene ID
+  left_join(protein_to_gene,by = c("Entry" = "ProteinID")) %>% 
+  select(-Entry) %>% 
+  select(Entry = Gene,Gene.Ontology.IDs)
+
+
+#usng enricher
+TERM2GENE = go %>% 
+  dplyr::select(TERM = Gene.Ontology.IDs,GENE = Entry) %>% 
+  as.data.frame()
+
+TERM2NAME = AnnotationDbi::select(GO.db::GO.db,keys = unique(TERM2GENE$TERM),columns = c("TERM")) %>% 
+  as.data.frame()
+
+
+# Extracting the uniprotids up in infected and shared
+shared_down_in_infected = infected_vs_healthy %>% 
+  filter(log2FC < 0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  pull(Gene)
+
+
+# Perfomring GO enrichment
+enrich = clusterProfiler::enricher(shared_down_in_infected,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME,
+         maxGSSize = 1000)
+
+DT::datatable(enrich@result)
+
+
+down_EcB = clusterProfiler::cnetplot(enrich,
+                                categorySize="pvalue",
+                                cex_label_category = 1,
+                                showCategory = 100,
+                                cex_label_gene = 0.5)+
+  theme(legend.position = "none")
+
+down_EcB
+
+
+ggsave("03_supplemental/s2_networks_compared_to_healthy/down_EcB.pdf",down_EcB,height =10, width = 10)
+```
+##### Faecalis
+
+
+###### Up 
+
+```{r,fig.height = 10, fig.width = 10}
+#usng enricher
+TERM2GENE = go %>% 
+  dplyr::select(TERM = Gene.Ontology.IDs,GENE = Entry) %>% 
+  as.data.frame() 
+
+TERM2NAME = AnnotationDbi::select(GO.db::GO.db,keys = unique(TERM2GENE$TERM),columns = c("TERM")) %>% 
+  as.data.frame()
+
+
+faecalis_v_healthy = readr::read_csv("01_r_processed_data/faecalis_v_healthy.csv") %>% 
+  left_join(protein_to_gene,by = c("uniprotid"= "ProteinID"))
+
+# Extracting the uniprotids up in infected and shared
+up_in_faecalis = faecalis_v_healthy %>% 
+  filter(log2FC >= 0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  pull(Gene)
+
+# Perfomring GO enrichment
+enrich = clusterProfiler::enricher(up_in_faecalis,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME,
+         maxGSSize = 1000)
+
+DT::datatable(enrich@result)
+
+
+up_faecalis = clusterProfiler::cnetplot(enrich,
+                                categorySize="pvalue",
+                                circular = FALSE,
+                                categorySize="pvalue",
+                                cex_label_category = 1,
+                                showCategory = 100,
+                                cex_label_gene = 0.5)+
+  theme(legend.position = "none")
+
+up_faecalis
+
+ggsave("03_supplemental/s2_networks_compared_to_healthy/up_faecalis.pdf",up_faecalis,height=10,width=10)
+```
+
+###### Down
+
+```{r,fig.height = 10, fig.width=10}
+#usng enricher
+TERM2GENE = go %>% 
+  dplyr::select(TERM = Gene.Ontology.IDs,GENE = Entry) %>% 
+  as.data.frame() 
+
+TERM2NAME = AnnotationDbi::select(GO.db::GO.db,keys = unique(TERM2GENE$TERM),columns = c("TERM")) %>% 
+  as.data.frame()
+
+
+# Extracting the uniprotids up in infected and shared
+down_in_faecalis = faecalis_v_healthy %>% 
+  filter(log2FC <= 0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  pull(Gene)
+
+# Perfomring GO enrichment
+enrich = clusterProfiler::enricher(down_in_faecalis,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME,
+         maxGSSize = 1000)
+
+DT::datatable(enrich@result)
+
+
+down_faecalis = clusterProfiler::cnetplot(enrich,
+                                categorySize="pvalue",
+                                circular = FALSE,
+                                categorySize="pvalue",
+                                cex_label_category = 1,
+                                showCategory = 100,
+                                cex_label_gene = 0.5)+
+  theme(legend.position = "none")
+
+down_faecalis
+
+ggsave("03_supplemental/s2_networks_compared_to_healthy/down_faecalis.pdf",down_faecalis,height=10,width=10)
+```
+
+
+##### Faecium
+
+
+###### Up
+
+```{r,fig.height = 10, fig.width = 10}
+
+healthy_v_faecium = readr::read_csv("01_r_processed_data/healthy_v_faecium.csv") %>% 
+  left_join(protein_to_gene,by = c("uniprotid"= "ProteinID"))
+
+#usng enricher
+TERM2GENE = go %>% 
+  dplyr::select(TERM = Gene.Ontology.IDs,GENE = Entry) %>% 
+  as.data.frame() 
+
+TERM2NAME = AnnotationDbi::select(GO.db::GO.db,keys = unique(TERM2GENE$TERM),columns = c("TERM")) %>% 
+  as.data.frame()
+
+
+# Extracting the uniprotids up in infected and shared
+# Extracting the uniprotids up in infected and shared
+up_in_faecium = healthy_v_faecium %>% 
+  filter(log2FC <= 0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  pull(Gene)
+
+# Perfomring GO enrichment
+enrich = clusterProfiler::enricher(up_in_faecium,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME,
+         maxGSSize = 1000)
+
+DT::datatable(enrich@result)
+
+
+up_faecium = clusterProfiler::cnetplot(enrich,
+                                categorySize="pvalue",
+                                circular = FALSE,
+                                categorySize="pvalue",
+                                cex_label_category = 1,
+                                showCategory = 100,
+                                cex_label_gene = 0.5)+
+  theme(legend.position = "none")
+
+up_faecium
+
+ggsave("03_supplemental/s2_networks_compared_to_healthy/up_faecium.pdf",up_faecium,height=10,width=10)
+```
+
+
+
+###### Down
+```{r,fig.height = 10, fig.width = 10}
+#usng enricher
+TERM2GENE = go %>% 
+  dplyr::select(TERM = Gene.Ontology.IDs,GENE = Entry) %>% 
+  as.data.frame() 
+
+TERM2NAME = AnnotationDbi::select(GO.db::GO.db,keys = unique(TERM2GENE$TERM),columns = c("TERM")) %>% 
+  as.data.frame()
+
+
+# Extracting the uniprotids up in infected and shared
+down_in_faecium = healthy_v_faecium %>% 
+  filter(log2FC >= 0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  pull(Gene)
+
+# Perfomring GO enrichment
+enrich = clusterProfiler::enricher(down_in_faecium,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME,
+         maxGSSize = 1000)
+
+DT::datatable(enrich@result)
+
+
+down_faecium = clusterProfiler::cnetplot(enrich,
+                                categorySize="pvalue",
+                                circular = FALSE,
+                                categorySize="pvalue",
+                                cex_label_category = 1,
+                                showCategory = 100,
+                                cex_label_gene = 0.5)+
+  theme(legend.position = "none")
+
+down_faecium
+
+
+ggsave("03_supplemental/s2_networks_compared_to_healthy/down_faecium.pdf",down_faecium,height=10,width=10)
+
+
+```
+
+##### Staph Aureus 
+
+```{r,eval=FALSE}
+#Loading in data, getting GO annotations
+staph_data = readxl::read_excel("00_r_input_data/staph_proteomics.xlsx",skip = 1) 
+
+ids = staph_data %>% 
+  pull(Protein) 
+
+
+# Getting GO annotations by hitting Uniprots API
+anot_go = GLabR::annotate_uniprot_single(ids,columns = "accession,id,gene_primary,go,go_c,go_p,go_f,go_id")
+
+write_csv(anot_go,"01_r_processed_data/staph_go_annotations.csv")
+
+```
+
+###### Up 
+
+```{r,fig.height = 10, fig.width= 10}
+#Loading in data,
+staph_data = readxl::read_excel("00_r_input_data/staph_proteomics.xlsx",skip = 1)
+anot_go = read_csv("01_r_processed_data/staph_go_annotations.csv") %>% 
+  select(Entry = Gene.Names..primary.,Gene.Ontology.IDs) %>% 
+  dplyr::select(1,length(.)) %>% 
+  tidyr::separate_rows(Gene.Ontology.IDs, sep = ';') %>% 
+  dplyr::mutate(Gene.Ontology.IDs = gsub(" ","",Gene.Ontology.IDs))
+    # Going from Protein ID to gene ID
+ # left_join(protein_to_gene,by = c("Entry" = "ProteinID")) %>% 
+  
+
+sig_up = staph_data %>% 
+  filter(Infection_pvalue <= 0.05) %>% 
+  filter(Infection_FC > 1) %>% 
+  pull(Gene)
+
+
+
+sig_down = staph_data %>% 
+  filter(Infection_pvalue <= 0.05) %>% 
+  filter(Infection_FC < 1) %>% 
+  pull(Gene)
+
+
+background = staph_data %>% 
+  pull(Gene)
+
+#usng enricher
+TERM2GENE = anot_go %>% 
+  dplyr::select(TERM = Gene.Ontology.IDs,GENE = Entry) %>% 
+  as.data.frame()
+
+
+test = TERM2GENE %>% 
+  filter(TERM == "GO:0070062")	
+
+TERM2NAME = AnnotationDbi::select(GO.db::GO.db,keys = unique(TERM2GENE$TERM),columns = c("TERM")) %>% 
+  as.data.frame()
+
+
+
+# Perfomring GO enrichment
+enrich = clusterProfiler::enricher(sig_up,
+         universe = background,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME,
+         maxGSSize = 1000)
+
+  DT::datatable(enrich@result)
+
+
+
+
+up_staph = clusterProfiler::cnetplot(enrich,
+                                categorySize="pvalue",
+                                cex_label_category = 1,
+                                showCategory = 100,
+                                cex_label_gene = 0.5)+
+  theme(legend.position = "none")
+
+up_staph
+
+
+ggsave("03_supplemental/s2_networks_compared_to_healthy/up_staph.pdf",up_staph,height=10,width=10)
+```
+
+###### Down
+
+```{r,fig.height = 10, fig.width= 10}
+# Perfomring GO enrichment
+enrich = clusterProfiler::enricher(sig_down,
+         universe = background,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME,
+         maxGSSize = 1000)
+
+DT::datatable(enrich@result)
+
+
+
+# Perfomring GO enrichment
+staph_down_enrich = clusterProfiler::enricher(sig_down,
+         universe = background,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME)
+
+down_staph = clusterProfiler::cnetplot(enrich,
+                                categorySize="pvalue",
+                                cex_label_category = 1,
+                                showCategory = 100,
+                                cex_label_gene = 0.5)+
+  theme(legend.position = "none")
+
+
+down_staph
+
+ggsave("03_supplemental/s2_networks_compared_to_healthy/down_staph.pdf",down_staph,height=10,width=10)
+
+```
+
+
+
+#### Plotting Heatmap
+
+
+```{r,fig.height =10, fig.width = 7}
+
+## Enterococcal Bacteremia 
+up_in_EcB_data = up_ECB$data[1:32,] %>% 
+   mutate(type = "EcB")
+
+
+down_in_EcB_data = down_EcB$data[1:16,] %>% 
+  mutate(size = size * -1) %>% 
+  mutate(type = "EcB")
+
+
+## E. faecalis
+
+up_in_faecalis_data = up_faecalis$data[1:24,] %>% 
+  mutate(type = "E. faecalis")
+
+down_in_faecalis_data = down_faecalis$data[1:24,] %>% 
+  mutate(type = "E. faecalis") %>% 
+  mutate(size = size * -1)
+
+
+## E. faecium
+up_in_faecium_data = up_faecium$data[1:9,] %>% 
+  mutate(type = "E. faecium")
+
+down_in_faecium_data = down_faecium$data[1:8,] %>% 
+  mutate(type = "E. faecium") %>% 
+  mutate(size = size * -1)
+
+
+## Staph Aureus
+
+up_staph_data = up_staph$data[1:8,] %>% 
+  mutate(type = "S. aureus")
+
+
+down_staph_data = down_staph$data[1:19,] %>% 
+  mutate(size = size * -1) %>% 
+  mutate(type = "S. aureus")
+
+
+# Combining all of the data 
+
+all = bind_rows(up_in_EcB_data,
+                down_in_EcB_data,
+                up_in_faecalis_data,
+                down_in_faecalis_data,
+                up_in_faecium_data,
+                down_in_faecium_data,
+                up_staph_data,
+                down_staph_data)
+
+
+# plotting the heatmap 
+f2b = all %>% 
+  ggplot(aes(reorder(name,size),type,fill = size))+
+  geom_tile()+
+  coord_flip()+
+  scale_fill_gradient2(
+  name = waiver(),
+  high = "red",
+  low = "green",
+  mid = "white",
+  midpoint = 0,
+  space = "Lab",
+  na.value = "grey50",
+  guide = "colourbar",
+  aesthetics = "fill"
+) + 
+  xlab("GO term")+
+  ylab("Bacteremia Type")+
+  ggprism::theme_prism(base_size = 10)+
+  theme(legend.position = "top")
+  
+
+f2b
+
+
+
+ggsave("02_figures/f2_infection_v_healthy_proteomics/f2b.pdf",height = 10, width = 7)
+
+```
+
+### ? Platelet Alpha Graunle
+
+```{r,fig.height = 5, fig.width = 10}
+
+# Extracting the proteins with the term platelet alphaa granule lumen from staph enrichment results
+staph_enrich_platelet = staph_down_enrich@result %>% 
+  filter(Description == "platelet alpha granule lumen") 
+
+
+down_in_staph = strsplit(staph_enrich_platelet$geneID,"/")[[1]]
+
+
+# Ex tracting the proteins with the term alph granule lumen from EcB enrichment results
+EcB_enrich_platelet = EcB_enrich_up@result %>% 
+  filter(Description == "platelet alpha granule lumen")
+
+up_in_EcB = strsplit(EcB_enrich_platelet$geneID,"/")[[1]]
+
+
+# These are the shared proteins at the intersection. 
+shared = intersect(down_in_staph,up_in_EcB)
+shared
+
+# plotting differences to healthy - staph
+staph = staph_data %>% 
+  filter(Gene %in% down_in_staph) %>% 
+  select(Gene,NN1:length(.)) %>% 
+  pivot_longer(2:length(.),names_to = "sample_id",values_to = "Abundance") %>%
+  mutate(Condition = case_when(grepl("HS.*|HM.*",sample_id) ~ "Infected",
+                              TRUE ~ "Healthy"),
+         Abundance = as.numeric(Abundance))
+
+make_violin_plot_proteomics(staph,shared,ncol = length(shared),pname = "p")
+
+# plotting differnces to healthy EcB 
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+f = protein_sum %>% 
+  filter(Gene %in% shared) %>% 
+  mutate(Condition = case_when(Condition == "Healthy" ~ "Healthy",
+                               TRUE ~ "Infected"))
+
+
+
+
+make_violin_plot_proteomics(f,shared,ncol = length(shared),pname = "p.signif")
+
+```
+
+
+## C - Venn Diagram   
+
+
+### Up in infected
+```{r,fig.height = 5, fig.width=6}
+infected_vs_healthy = readr::read_csv("01_r_processed_data/Infected_vs_Healthy.csv")
+faecalis_v_healthy = readr::read_csv("01_r_processed_data/faecalis_v_healthy.csv")
+healthy_v_faecium = readr::read_csv("01_r_processed_data/healthy_v_faecium.csv")
+  
+# Defining significant proteins in faecalis
+faecalis_sig = faecalis_v_healthy %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  filter(log2FC<0) %>% 
+  pull(uniprotid)
+  
+# Defining significant proteins in faecium
+faecium_sig = healthy_v_faecium %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  filter(log2FC > 0) %>% 
+  pull(uniprotid) 
+
+# found to be sig in both faecalis and faecium
+enterococcus_sig = infected_vs_healthy %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  filter(log2FC < 0)%>% 
+  pull(uniprotid) 
+
+
+# Loading staph_data
+staph_sig = readxl::read_excel("00_r_input_data/staph_proteomics.xlsx",skip = 1) %>% 
+  filter(Infection_pvalue <= 0.05,
+         Infection_FC < 1) %>% 
+  pull(Protein)
+
+
+library(ggVennDiagram)
+
+
+up = ggVennDiagram(list(EcB = enterococcus_sig, faecalis = faecalis_sig, faecium = faecium_sig, S.aureus = staph_sig))+
+  theme(legend.position = "none")+
+  scale_fill_distiller(palette = "Reds", direction = 1)
+
+
+up
+
+ggsave("02_figures/f2_infection_v_healthy_proteomics/f2d_a.pdf", up, height = 5, width = 6)
+
+ggVennDiagram(list(EcB = enterococcus_sig, S.aureus = staph_sig))
+
+
+
+```
+
+### Up in Healthy 
+
+```{r,fig.height = 5, fig.width=6}
+infected_vs_healthy = readr::read_csv("01_r_processed_data/Infected_vs_Healthy.csv")
+faecalis_v_healthy = readr::read_csv("01_r_processed_data/faecalis_v_healthy.csv")
+healthy_v_faecium = readr::read_csv("01_r_processed_data/healthy_v_faecium.csv")
+  
+# Defining significant proteins in faecalis
+faecalis_sig = faecalis_v_healthy %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  filter(log2FC>0) %>% 
+  pull(uniprotid)
+  
+# Defining significant proteins in faecium
+faecium_sig = healthy_v_faecium %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  filter(log2FC < 0) %>% 
+  pull(uniprotid) 
+
+# found to be sig in both faecalis and faecium
+enterococcus_sig = infected_vs_healthy %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  filter(log2FC > 0)%>% 
+  pull(uniprotid) 
+
+
+# Loading staph_data
+staph_sig = readxl::read_excel("00_r_input_data/staph_proteomics.xlsx",skip = 1) %>% 
+  filter(Infection_pvalue <= 0.05,
+         Infection_FC > 1) %>% 
+  pull(Protein)
+
+
+library(ggVennDiagram)
+
+
+down = ggVennDiagram(list(EcB = enterococcus_sig, faecalis = faecalis_sig, faecium = faecium_sig, S.aureus = staph_sig))+
+  theme(legend.position = "none")+
+  scale_fill_distiller(palette = "Greens", direction = 1)
+
+down
+
+
+ggsave("02_figures/f2_infection_v_healthy_proteomics/f2d_b.pdf",down,height = 5, width = 6)
+
+
+ggVennDiagram(list(EcB = enterococcus_sig, S.aureus = staph_sig))
+
+
+```
+
+What proteins have differing responses in staph vs EcB?
+
+
+
+```{r}
+# found to be sig in both faecalis and faecium
+enterococcus_sig_up = infected_vs_healthy %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  filter(log2FC > 0)%>% 
+  pull(uniprotid) 
+
+
+# Loading staph_data
+staph_sig_down = readxl::read_excel("00_r_input_data/staph_proteomics.xlsx",skip = 1) %>% 
+  filter(Infection_pvalue <= 0.05,
+         Infection_FC < 1) %>% 
+  pull(Protein)
+
+
+library(ggVennDiagram)
+ggVennDiagram(list(enterococcus_sig_up, staph_sig_down))
+
+GLabR::annotate_uniprot(intersect(enterococcus_sig_up,staph_sig_down),"accession,id,gene_primary,protein_name")
+```
+
+
+```{r}
+# found to be sig in both faecalis and faecium
+enterococcus_sig_down = infected_vs_healthy %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  filter(log2FC < 0)%>% 
+  pull(uniprotid) 
+
+
+# Loading staph_data
+staph_sig_up = readxl::read_excel("00_r_input_data/staph_proteomics.xlsx",skip = 1) %>% 
+  filter(Infection_pvalue <= 0.05,
+         Infection_FC > 1) %>% 
+  pull(Protein)
+
+
+library(ggVennDiagram)
+
+ggVennDiagram(list(enterococcus_sig_down, staph_sig_up))
+
+GLabR::annotate_uniprot(intersect(enterococcus_sig_down,staph_sig_up),"accession,id,gene_primary,protein_name")
+```
+
+
+
+
+## C- Evaluation of Proteomic Biomarkers
+
+
+### Generating top 10 biomarkers 
+
+```{r,fig.height=8,fig.width = 8}
+#reading in the data
+pl = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv") 
+
+
+## Getting into a format ot use with EFS ##
+clean = pl %>% 
+  dplyr::group_by(Mixture,Gene,Channel,Condition) %>% 
+  dplyr::summarise(sum = sum(Abundance)) %>% 
+  ungroup()
+
+infected_healthy_l = clean %>% 
+  mutate(classlabels = case_when(Condition %in% c("Faecalis","Faecium") ~ 1,
+                                   TRUE ~ 0)) %>% 
+  mutate(classlabels = as.logical(classlabels)) %>% 
+  # - messes up EFS for some reason, very annoying. 
+  mutate(Gene = gsub("-","_",Gene))
+
+infected_healthy_w = infected_healthy_l %>% 
+ tidyr::pivot_wider(names_from = Gene,
+              values_from = sum) %>% 
+  mutate(sampleid = paste0(Mixture,".",Channel)) %>% 
+  dplyr::select(-Mixture,-Channel,-Condition,-sampleid) %>% 
+  dplyr::select_if(~ !any(is.na(.))) %>% 
+  #needs to be a dataframe or EFS freaks out. 
+  as.data.frame() 
+
+set.seed(2)
+
+## Running EFS ##
+ensemble_result = EFS::ensemble_fs(infected_healthy_w,1,cor_threshold = 0)
+
+
+## Getting EFS Result in Plotable Format
+long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "Gene") %>% 
+  #converting genes back to proper notation. 
+  mutate(Gene = gsub("_","-",Gene))
+
+# Ranking Biomarkers
+top = long %>% 
+  group_by(Gene) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) 
+
+# Extracting the top 10 ranked biomarkers 
+topn = top[1:10,] %>% 
+  pull(Gene)
+
+
+# Filtering the EFS data for plotting purposes
+filtered = long %>% 
+  filter(Gene %in% topn) 
+
+# # Generating the EFS plot. 
+# f2d = filtered %>% 
+#   ggplot(aes(reorder(Gene,value),value,fill = model))+
+#   geom_col()+
+#   coord_flip()+
+#   viridis::scale_fill_viridis(discrete = TRUE)+
+#   ggtitle("Top 10 Performing Protein Biomarkers")+
+#   xlab("Protein Biomarkers")
+# 
+# 
+# f2d
+
+ggsave("02_figures/f2_infection_v_healthy_proteomics/f2d.pdf",f2d,height = 8, width = 8)
+
+# Writting to file to use in supplementary figures. 
+topn_proteomics = tibble(Gene = topn)
+
+write_csv(topn_proteomics,"01_r_processed_data/top10_infected_v_healthy_proteomics_biomarkers.csv")
+
+```
+
+### Plotting 
+
+```{r,fig.height=8,fig.width=8}
+# Reading in data
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+# Processing data 
+ROC_data = dplyr::filter(protein_sum,Gene %in% topn) %>% 
+  dplyr::mutate(Condition = case_when(Condition %in% c("Faecalis","Faecium") ~ "infected",
+                                      TRUE ~ Condition)) 
+
+source("functions.R")
+
+bottom_plot = make_roc_proteomics(ROC_data,topn[1:2],ncol = 2)
+
+top_plot = make_violin_plot_proteomics(ROC_data,topn[1:2], ncol = 2,pname = "p.signif")
+
+
+
+f2c = ggpubr::ggarrange(top_plot,bottom_plot,nrow = 2)
+ggsave("02_figures/f2_infection_v_healthy_proteomics/f2c.pdf",f2c,height = 8, width = 8)
+```
+
+# Figure 3- Metabolomic differences between Healthy and Infected EcB
+
+## Processing Metabolomic data
+
+```{r}
+### Unnormalized data ###
+#reading and formatting the metabolomics data
+data = read_csv("00_r_input_data/mzmine_output/features_quant.csv") %>% 
+  janitor::clean_names() %>% 
+  select(1:3,14:length(.)) %>% 
+  pivot_longer(4:length(.),names_to = "metabolomics_id") %>% 
+  mutate(metabolomics_id = gsub("_mz.*","",metabolomics_id),
+         metabolomics_id = toupper(metabolomics_id)) %>% 
+  #need to add the RID prefix because having numeric column names (which we will have after pivoting the data) messes up lots of the functions. 
+  mutate(row_id = paste0("RID_",row_id))
+
+# Reading in the mapping 
+map = read_csv("00_r_input_data/metabolomics_mapping.csv")
+
+md = read_csv("00_r_input_data/clinical_metadata.csv")
+
+# combining the mapping and metadata
+map_md = inner_join(map,md,by= "sample_id")
+
+# Combining everything
+all = inner_join(data,map_md,by = "metabolomics_id") 
+
+
+write_csv(all,"01_r_processed_data/unnormalized_metabolomics.csv")
+
+##### Normalizing the metabolomics data ######
+
+standard = all %>% 
+  filter(row_id == "RID_6043") %>% 
+  select(metabolomics_id,standard_value = value) 
+
+
+#The normalization that Robert used was to divide the value by the standard value, multiply by 1E6 ( so it isn't negative) and then take the log10 of it. 
+norm = all %>% 
+  inner_join(standard, by = "metabolomics_id") %>% 
+  mutate(norm_value = log10((value/standard_value) * 1E6))
+
+
+inf = norm %>% 
+  filter(norm_value == -Inf) %>% 
+  select(row_id,value,standard_value,norm_value) %>% 
+  pull(row_id) %>% 
+  unique() 
+
+
+`%!in%` = Negate(`%in%`)
+
+normalized_data = norm %>% 
+  filter(row_id %!in% inf,
+         row_id != "RID_6043")
+
+
+write_csv(normalized_data,"01_r_processed_data/normalized_metabolomics.csv")
+```
+
+## A - Volcano plots of differentially abundant features.
+
+```{r,fig.height=4, fig.width = 4}
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv",na = c("N/A","NA"))
+## Reading in the normalized metabolomics data ##
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+
+# Performing statistics so we can make a volcano plot
+  stat = normalized_data %>%
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ infection_status) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+
+
+# Extracting the values for each feature for healthy patients
+healthy = normalized_data %>% 
+  filter(infection_status == "uninfected") %>% 
+  group_by(row_id) %>% 
+  summarise(healthy = mean(norm_value))
+
+
+# Extracting the values for each feature for infected patients
+infected = normalized_data %>% 
+  filter(infection_status == "infected") %>% 
+  group_by(row_id) %>% 
+  summarise(infected = mean(norm_value))
+
+
+## Combining the healthy and infected so we can caclulated the log2fc ##
+log2fc = inner_join(healthy,infected,by = "row_id") %>% 
+  mutate(log2fc_infected_healthy = log2(infected/healthy))
+  
+
+## Joining the statistics and log2 fold change ##  
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE))
+  
+f3a = vp %>% 
+  ggplot(aes(log2fc_infected_healthy,-log10(p.adj_fdr),color = annotated))+
+  geom_point(size = 0.5)+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed",color = "red")+
+  xlab("log2FC (Infected/Healthy)")+
+  ggprism::theme_prism(base_size = 10)+
+  theme(legend.position = "none")
+
+f3a
+
+
+ggsave(f3a,filename = "02_figures/f3_infection_v_healthy_metabolomics/f3a.pdf",height = 4, width = 4)
+```
+
+## B - breakdown on number of features ID
+
+```{r}
+## Reading in the data ##
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv",na = c("N/A","NA"))
+
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+
+unnormalized_data = read_csv("01_r_processed_data/unnormalized_metabolomics.csv")
+
+
+## Calculating the number of features ##
+n_identified_features_gnps = nrow(gnps_annotations)
+total_features = length(unique(unnormalized_data$row_id))
+features_after_norm = length(unique(normalized_data$row_id))
+
+percent_of_total_features_id = round(n_identified_features_gnps / total_features * 100,)
+
+percent_of_norm_features_id = round(n_identified_features_gnps / features_after_norm * 100,0)
+
+# Putting together a data frame # 
+feature_count = tibble(`# total features` = total_features,
+                       `# features after normalization` = features_after_norm,
+                       `# of identified features by GNPS` = n_identified_features_gnps,
+                       `% of total features ided` = percent_of_total_features_id,
+                       `% of normalized features ided` = percent_of_norm_features_id) %>% 
+  pivot_longer(1:length(.))
+
+#Making a plot of the table
+pdf("02_figures/f3_infection_v_healthy_metabolomics/f3b.pdf",height = 4, width = 4)
+gridExtra::grid.table(feature_count)
+dev.off()
+```
+
+## C - enrichment analysis of Metabolites in Infected Samples
+
+```{r,fig.height = 3, fig.width = 4}
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv") 
+
+## Structuring the data for enrichment Analysis ##
+gnps_enrichment_data = gnps_annotations %>% 
+  #Manual conversion of unreasonable name to what it is listed as in MASSBANK
+  select(compound_name_cleaned,npclassifier_superclass,npclassifier_class,npclassifier_pathway) %>% 
+  mutate(GO_id = paste0(npclassifier_superclass,"_",npclassifier_class,"_",npclassifier_pathway))
+ 
+#Making a makeshift "GO" type database using the GNPS annotations. 
+TERM2GENE = gnps_enrichment_data %>% 
+  dplyr::select(TERM = GO_id,GENE = compound_name_cleaned) %>% 
+  as.data.frame()
+
+TERM2NAME = gnps_enrichment_data %>% 
+  select(-compound_name_cleaned) %>% 
+  pivot_longer(cols = 1:3) %>% 
+  select(keys = GO_id,columns = value) %>% 
+  as.data.frame()
+  
+## Extracting the row_ids that were significant from the volcano plot ##
+stat_different = vp %>% 
+  filter(p.adj_fdr <= 0.05)
+
+#
+#converting RID to compound_name
+stat_different_map = inner_join(vp,gnps_annotations,by = "row_id") 
+
+## Extracting the row ids that were upregulated in 
+up = stat_different_map %>% 
+  filter(log2fc_infected_healthy > 0 ) %>% 
+  pull(compound_name_cleaned)
+
+# Performing an enrichment
+enriched_in_infected = clusterProfiler::enricher(up,
+         universe = gnps_enrichment_data$compound_name_cleaned,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME
+         )
+
+
+f3c = clusterProfiler::cnetplot(enriched_in_infected,cex_label_category = 1,cex_label_gene = 0.5 )+
+  theme(legend.position = "none")
+
+f3c
+
+ggsave("02_figures/f3_infection_v_healthy_metabolomics/f3c.pdf",f3c,height = 3,width = 4)
+```
+
+
+
+```{r}
+down = stat_different_map %>% 
+  filter(log2fc_infected_healthy < 0 ) %>% 
+  pull(compound_name_cleaned)
+
+# Performing an enrichment
+enriched_in_healthy = clusterProfiler::enricher(down,
+         universe = gnps_enrichment_data$compound_name_cleaned,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME,pAdjustMethod = "none"
+         )
+
+enriched_in_healthy
+
+
+```
+
+^ There are no enriched terms here. 
+
+### Staph data for supplement
+
+```{r,fig.height = 4,fig.height = 4}
+staph_metabolomics = readxl::read_excel("00_r_input_data/staph_metabolomics.xlsx",skip = 1) 
+
+## Structuring the data for enrichment Analysis ##
+gnps_enrichment_data = staph_metabolomics %>% 
+  #Manual conversion of unreasonable name to what it is listed as in MASSBANK
+  select(Unique_ID,Superclass,Class,Subclass) %>% 
+  mutate(GO_id = paste0(Superclass,"_",Class,"_",Subclass))
+ 
+#Making a makeshift "GO" type database using the GNPS annotations. 
+TERM2GENE = gnps_enrichment_data %>% 
+  dplyr::select(TERM = GO_id,GENE = Unique_ID) %>% 
+  as.data.frame()
+
+TERM2NAME = gnps_enrichment_data %>% 
+  select(-Unique_ID) %>% 
+  pivot_longer(cols = 1:3) %>% 
+  select(keys = GO_id,columns = value) %>% 
+  as.data.frame()
+  
+## Extracting the row_ids that were significant from the volcano plot ##
+stat_different = staph_metabolomics %>% 
+  mutate(Infection_pvalue = as.numeric(Infection_pvalue)) %>% 
+  filter(Infection_pvalue <= 0.05)
+
+
+## Extracting the row ids that were upregulated in 
+up = stat_different %>% 
+  filter(Infection_FC > 1) %>% 
+  pull(Unique_ID)
+
+# Performing an enrichment
+enriched_in_infected = clusterProfiler::enricher(up,
+         universe = gnps_enrichment_data$Unique_ID,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME
+         )
+
+
+
+
+
+## Here is the data frame with only the identified unique IDs
+names = staph_metabolomics %>% 
+  filter(Unique_ID %in% c(2510,2915,1917,2800,3125,3138,2263,2240,2470,3507,2767,1898,3509,1944))
+
+# Manually converting the RID to reasonable names
+fixed_names_vector = c("2510",
+  "12-Ketodeoxycholic acid",
+  "2-((4R)-4-((3R,5S,7R,9S,10S,13R,14S,17R)-3,7-dihydroxy-10,13-dimethylhexadecahydro-1H-cyclopenta[a]phenanthren-17-yl)pentanamido)ethane-1-sulfonic acid",
+  "2-((4R)-4-((3R,5S,7R,9S,10S,13R,14S,17R)-3,7-dihydroxy-10,13-dimethylhexadecahydro-1H-cyclopenta[a]phenanthren-17-yl)pentanamido)ethane-1-sulfonic acid",
+  "(2S,6R)-2-methyl-6-((3R,5S,7R,9S,10S,12S,13R,14S,17R)-3,7,12-trihydroxy-10,13-dimethylhexadecahydro-1H-cyclopenta[a]phenanthren-17-yl)heptanoic acid",
+  "3138",
+  "2-((4R)-4-((3R,5S,7R,9S,10S,13R,14S,17R)-3,7-dihydroxy-10,13-dimethylhexadecahydro-1H-cyclopenta[a]phenanthren-17-yl)pentanamido)ethane-1-sulfonic acid",
+  "Tauroursodeoxycholic acid",
+  "3beta-Hydroxy-5-cholenoic acid",
+  "Taurocholic acid",
+  "2767",
+  "Taurocholic acid",
+  "Taurocholic acid",
+  "Glycocholic acid")
+  
+fixed_names = paste0(fixed_names_vector,collapse = "/")
+
+
+enriched_in_infected@result$geneID = fixed_names
+
+
+up_plot = clusterProfiler::cnetplot(enriched_in_infected,cex_label_category = 1, cex_label_gene = 0.4)+
+  theme(legend.position = "none")
+
+up_plot
+
+
+
+ggsave("03_supplemental/s2_networks_compared_to_healthy/up_in_staph_metabolomics.pdf",up_plot,width = 4, height = 4)
+```
+
+
+```{r,fig.height = 4, fig.width = 4}
+## Extracting the row ids that were upregulated in 
+down = stat_different %>% 
+  filter(Infection_FC < 1) %>% 
+  pull(Unique_ID)
+
+# Performing an enrichment\
+
+# Performing an enrichment
+enriched_in_healthy = clusterProfiler::enricher(down,
+         universe = gnps_enrichment_data$Unique_ID,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME
+         )
+
+## Here is the data frame with only the identified unique IDs
+names = staph_metabolomics %>% 
+  filter(Unique_ID %in% c(554,132,450,1939,33,372,99,557,1057,586,434,128))
+
+
+fixed_names_vector = c("1-Myristoyl-sn-glycero-3-phosphocholine",
+                "132",
+                "1-Octadecyl-2-acetyl-sn-glycero-3-phosphocholine",
+                "1-Myristoyl-sn-glycero-3-phosphocholine",
+                "1-Pentadecanoyl-sn-glycero-3-phosphocholine",
+                "372",
+                "1-Octadecyl-sn-glycero-3-phosphocholine",
+                "1,2-Dioctanoyl PC",
+                "1-(1Z-Octadecenyl)-sn-glycero-3-phosphocholine",
+                "1-(1Z-Octadecenyl)-sn-glycero-3-phosphocholine",
+                "434",
+                "1-O-Hexadecyl-2-O-(2E-butenoyl)-sn-glyceryl-3-phosphocholine")
+
+
+fixed_names = paste0(fixed_names_vector,collapse = "/")
+
+enriched_in_healthy@result$geneID = fixed_names
+
+healthy_plot = clusterProfiler::cnetplot(enriched_in_healthy,cex_label_category = 1,show_category = 100,cex_label_gene = 0.5)+
+  theme(legend.position = "none")
+healthy_plot
+
+ggsave("03_supplemental/s2_networks_compared_to_healthy/down_in_staph_metabolomics.pdf",healthy_plot,width = 4, height = 4)
+
+```
+
+
+
+
+
+
+
+## D - Assesment of top biomarkers
+
+
+### Data processing
+```{r,fig.height = 8, fig.width = 8}
+## Reading in the normalized data ## 
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+## Switching to the wide format ### 
+norm_wide = normalized_data %>%
+  select(-row_m_z,-row_retention_time,-value) %>% 
+  tidyr::pivot_wider(names_from = row_id,values_from = norm_value)
+
+## Looking for only columns that were annotated ## 
+gnps_and_in_norm = intersect(unique(gnps_annotations$row_id), colnames(norm_wide))
+
+gnps_annotated_metabolites = norm_wide %>% 
+  as.data.frame() %>% 
+  select(condition,gnps_and_in_norm)
+
+## Extracting the numeric data ##
+efs_sel = gnps_annotated_metabolites %>% 
+  mutate(classlabels = case_when(condition %in% c("faecalis","faecium") ~ 0,
+                           TRUE ~ 1)) %>% 
+  select(classlabels,2:length(.)) %>% 
+   #absolutely needs to be a data frame and not a tibble for EFS package
+  as.data.frame()
+
+# Seting seed incase this isn't done internally in EFS
+set.seed(2)
+
+## Running EFS feature selection ##
+ensemble_result = EFS::ensemble_fs(efs_sel,
+                                   classnumber = 1,cor_threshold = 0)
+
+## Formating the data as long ##
+ long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "row_id")
+
+## Extracting top metabolites ##
+top = long %>% 
+  group_by(row_id) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) 
+
+## Pulling top N metabolites ##
+topn = top[1:10,] %>% 
+  pull(row_id)
+
+
+#writing file contining the topn row ids 
+topn_metabolomics = tibble(row_id = topn)
+
+write_csv(topn_metabolomics,"01_r_processed_data/top10_infected_v_healthy_metabolomics_biomarkers.csv")
+
+## Filtering the data, combining annotation names ##
+filtered = long %>% 
+  filter(row_id %in% topn) %>% 
+  inner_join(gnps_annotations,by = "row_id")
+
+## Plotting the data ## 
+# f3d = filtered %>% 
+#   ggplot(aes(reorder(compound_name_cleaned,value),value,fill = model))+
+#   geom_col()+
+#   coord_flip()+
+#   viridis::scale_fill_viridis(discrete = TRUE)+
+#   ggtitle("Top 10 Performing Metabolite Biomarkers of Infection")+
+#   xlab("Metabolite Biomarkers")
+# 
+# f3d
+
+#ggsave("02_figures/f3_infection_v_healthy_metabolomics/f3d.pdf",f3d,height = 8,width = 8,units = "in")
+```
+
+### Plotting
+
+```{r,fig.height = 8, fig.width = 8}
+## Arranging Data so it is in the correct order ### 
+ROC_data = dplyr::filter(normalized_data,row_id %in% topn[1:2]) %>% 
+  dplyr::arrange(factor(row_id,topn)) %>% 
+  inner_join(gnps_annotations,by = c("row_id" = "row_id")) %>% 
+mutate(condition = case_when(condition == "healthy" ~ "healthy",
+                             TRUE ~ "infected"))
+
+source("functions.R")
+
+top = make_violin_plot_metabolomics(ROC_data,topn = topn[1:2],ncol = 2,pname = "p.signif")
+
+bottom = make_roc_metabolomics(ROC_data,ncol = 2)
+
+
+f3d = ggpubr::ggarrange(top,bottom,nrow = 2)
+
+f3d
+
+
+ggsave("02_figures/f3_infection_v_healthy_metabolomics/f3d.pdf",f3d,height=8,width=8)
+```
+
+# Figure 4- Proteomic Differences between Enterococcus Faecium and Faecalis
+
+## A- Volcano plot
+
+```{r,fig.height = 4, fig.width =4}
+faecalis_v_faecium = readr::read_csv("01_r_processed_data/faecalis_v_faecium.csv") %>% 
+  left_join(protein_to_gene,by = c("uniprotid" = "ProteinID"))
+
+  f4a = faecalis_v_faecium %>% 
+  ggplot(aes(log2FC,-log10(adj.pvalue)))+
+  geom_point(size = 0.5)+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed",color = "red")+
+  xlab("Log2FC Faecalis / Faecium")+
+  ggprism::theme_prism(base_size = 10)
+
+f4a
+
+ggsave("02_figures/f4_faecalis_v_faecium_proteomics/f4a.pdf",f4a,height = 4, width = 4)
+```
+
+## B Network analysis up in Faecalis
+
+```{r,fig.height = 4, fig.width = 8}
+up_in_faecalis = faecalis_v_faecium %>% 
+  filter(log2FC>0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  arrange(adj.pvalue) %>% 
+  pull(Gene)
+
+#Getting all the go annotations 
+go = read_csv("00_r_input_data/go_annotations.csv") %>% 
+  dplyr::select(1,length(.)) %>% 
+  tidyr::separate_rows(Gene.Ontology.IDs, sep = ';') %>% 
+  dplyr::mutate(Gene.Ontology.IDs = gsub(" ","",Gene.Ontology.IDs)) %>% 
+    # Going from Protein ID to gene ID
+  left_join(protein_to_gene,by = c("Entry" = "ProteinID")) %>% 
+  select(-Entry) %>% 
+  select(Entry = Gene,Gene.Ontology.IDs)
+
+
+#usng enricher
+TERM2GENE = go %>% 
+  dplyr::select(TERM = Gene.Ontology.IDs,GENE = Entry) %>% 
+  as.data.frame()
+
+TERM2NAME = AnnotationDbi::select(GO.db::GO.db,keys = unique(TERM2GENE$TERM),columns = c("TERM")) %>% 
+  as.data.frame()
+
+
+enrich = clusterProfiler::enricher(up_in_faecalis,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME)
+
+
+f4b = clusterProfiler::cnetplot(enrich,
+                                categorySize="pvalue",
+                                cex_label_category = 1,
+                                cex_label_gene = 0.5,
+                                showCategory = 100)+
+  theme(legend.position = "none")
+
+f4b
+
+
+ggsave("02_figures/f4_faecalis_v_faecium_proteomics/f4b.pdf",height = 4, width =8)
+```
+
+## C - Immunoglobulin comparisons
+
+```{r,fig.height = 3.8, fig.width = 4}
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+anot = read_csv("00_r_input_data/all_protein_annotations.csv")
+
+sum_annotated = left_join(protein_sum,anot,by = c("uniprotid" = "Entry"))
+
+
+ig = sum_annotated %>% 
+  filter(grepl(".*Immunoglobulin.*",Protein.names)) %>% 
+  filter(!grepl(".*receptor.*",Protein.names)) %>% 
+  #Removing one problematic immunglobulin. Negative values for 3 of the samples messed things up. 
+  #Doesn't change the story, just the plot. 
+  filter(uniprotid != "A0A0B4J2B5")
+
+
+stat = ig %>% 
+  rstatix::t_test(Abundance ~ Condition)
+
+f4c = ig %>% 
+  ggplot(aes(Condition,Abundance),size = 0.5)+
+  geom_violin()+
+  geom_boxplot()+
+  ggpubr::stat_pvalue_manual(stat,
+                             y.position = 22,
+                             step.increase = 0.1)+
+  ggprism::theme_prism(base_size = 10)
+
+f4c
+
+ggsave("02_figures/f4_faecalis_v_faecium_proteomics/f4c.pdf",f4c,height = 3.8,width = 4)
+```
+
+
+
+## D - terms up in faecium.
+
+```{r,fig.height = 3.8, fig.width = 4}
+up_in_faecium = faecalis_v_faecium %>% 
+  filter(log2FC<0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  arrange(adj.pvalue) %>% 
+  pull(Gene)
+
+
+
+enrich = clusterProfiler::enricher(up_in_faecium,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME)
+
+
+f4d = clusterProfiler::cnetplot(enrich,
+                                categorySize="pvalue",
+                                cex_label_category = 1,
+                                cex_label_gene = 0.5,
+                                showCategory = 100)+
+  theme(legend.position = "none")
+
+f4d
+
+ggsave("02_figures/f4_faecalis_v_faecium_proteomics/f4d.pdf",f4d,height = 3.8, width = 4)
+```
+
+## E - Assesment of Biomarkers
+
+### Data Processing
+
+```{r,fig.height=8,fig.width = 8}
+library(EFS)
+pl = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv") 
+
+clean = pl %>% 
+  dplyr::group_by(Mixture,Gene,Channel,Condition) %>% 
+  dplyr::summarise(sum = sum(Abundance))
+
+faecium_v_faecalis_l = clean %>% 
+  filter(Condition %in% c("Faecium", "Faecalis")) %>% 
+  mutate(classlabels = case_when(Condition == "Faecalis" ~ 1,
+                                   TRUE ~ 0)) %>%
+  # EFS can't handle the - charachter. 
+  mutate(Gene = gsub("-","_",Gene))
+
+
+faecium_v_faecalis_w = faecium_v_faecalis_l %>% 
+  pivot_wider(names_from = Gene,
+              values_from = sum) %>% 
+  mutate(sampleid = paste0(Mixture,".",Channel)) %>% 
+  ungroup() %>% 
+  dplyr::select(-Mixture,-Channel,-Condition,-sampleid) %>% 
+  select_if(~ !any(is.na(.))) %>% 
+  as.data.frame()
+
+#need to come up with some sort of way to combine all of the fractions and plexes
+# The problem is that na.omit filters everything out. 
+ensemble_result = EFS::ensemble_fs(faecium_v_faecalis_w,1,cor_threshold = 0)
+
+long = ensemble_result %>% 
+  as.data.frame() %>% 
+  #Converting gene names back
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "Gene") %>% 
+  mutate(Gene = gsub("_","-",Gene))
+
+
+top = long %>% 
+  group_by(Gene) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) 
+
+
+topn = top[1:10,] %>% 
+  pull(Gene)
+
+
+# writing to file 
+topn_proteomics = tibble(Gene = topn)
+
+write_csv(topn_proteomics,"01_r_processed_data/top10_faecalis_v_faecium_proteomics_biomarkers.csv")
+
+# f4d = long %>% 
+#   filter(Gene %in% topn) %>% 
+#   ggplot(aes(reorder(Gene,value),value,fill = model))+
+#   geom_col()+
+#   coord_flip()+
+#   viridis::scale_fill_viridis(discrete = TRUE)+
+#   ggtitle("Top 10 Biomarkers Differentiating Faecalis from Faecium by EFS")+
+#   xlab("Protein Biomarkers")
+# 
+# f4d
+
+# ggsave("02_figures/f4_faecalis_v_faecium_proteomics/f4d.pdf",f4d,height = 8,width = 8)
+```
+
+### Plotting
+
+```{r,fig.height=4,fig.width=8}
+
+ROC_data = dplyr::filter(protein_sum,Gene %in% topn[1:2]) %>% 
+  dplyr::filter(Condition %in% c("Faecalis","Faecium")) 
+
+source("functions.R")
+
+
+f4d = make_violin_plot_proteomics(ROC_data,topn[1:2],ncol = 2,pname = "p.signif")
+f4e = make_roc_proteomics(ROC_data,topn[1:2],ncol=2)
+
+f4d = ggpubr::ggarrange(f4d,f4e,nrow = 2)
+
+ggsave("02_figures/f4_faecalis_v_faecium_proteomics/f4d.pdf",f4d,height=8,width=8)
+```
+
+# Figure 5 - Metabolomic Differences between Faecalis and Faecium Infected samples
+
+## A - Volcano plot of data.
+
+```{r,fig.height = 3.8, fig.width = 4}
+## Reading in Data
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+# Performing statistics so we can make a volcano plot
+  stat = normalized_data %>%
+    filter(condition %in% c("faecalis","faecium")) %>% 
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ condition) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+
+# Calculating log2fc
+log2fc_data = normalized_data %>%  
+    dplyr::select(metabolomics_id,row_id,condition,norm_value) 
+
+
+# Extracting just the faecalis data
+faecalis = log2fc_data %>% 
+  filter(condition == "faecalis") %>% 
+  group_by(row_id) %>% 
+  summarise(faecalis = mean(norm_value))
+
+# Extracting just the faecium data 
+faecium = log2fc_data %>% 
+  filter(condition == "faecium") %>% 
+  group_by(row_id) %>% 
+  summarise(faecium = mean(norm_value))
+
+# Calculating log2fc
+log2fc = inner_join(faecalis,faecium,by = "row_id") %>% 
+  mutate(log2fc_faecalis_faecium = log2(faecalis/faecium))
+  
+# Combining log2fc and statistics 
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE))
+
+
+annotations = vp %>% 
+  filter(p.adj_fdr <= 0.05,
+         annotated == TRUE) %>% 
+  inner_join(gnps_annotations, by = "row_id")
+  
+  
+f5a = vp %>% 
+  ggplot(aes(log2fc_faecalis_faecium,-log10(p.adj_fdr),color = annotated))+
+  geom_point(size = 0.5)+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed",color = "red")+
+  xlab("log2FC (Faecalis/Faecium)")+
+  ggrepel::geom_label_repel(data = annotations,aes(label = compound_name_cleaned,x= log2fc_faecalis_faecium, y = -log10(p.adj_fdr)),size = 2.5,label.size = 0.1)+
+  ggprism::theme_prism(base_size = 10)+
+  theme(legend.position = "none")
+  
+
+f5a
+
+ggsave("02_figures/f5_faecalis_v_faecium_metabolomics/f5a.pdf",f5a,height = 3.8, width =4)
+```
+
+## B - Biomarker Assesment
+
+
+### Data Processing
+```{r,fig.height = 8 , fig.width = 8}
+## Reading in the normalized data ## 
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv") %>% 
+#Removing reduntant RIDs. These were found to be the same as other top biomarkers
+  filter(row_id != "RID_8856",
+         row_id != "RID_22529",
+         row_id != "RID_22270",
+         row_id != "RID_9436")
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+## Switching to the wide format ### 
+norm_wide = normalized_data %>%
+  select(-row_m_z,-row_retention_time,-value) %>% 
+  tidyr::pivot_wider(names_from = row_id,values_from = norm_value)
+
+## Looking for only columns that were annotated ## 
+gnps_and_in_norm = intersect(unique(gnps_annotations$row_id), colnames(norm_wide))
+
+gnps_annotated_metabolites = norm_wide %>% 
+  as.data.frame() %>% 
+  select(condition,gnps_and_in_norm)
+
+## Extracting the numeric data ##
+efs_sel = gnps_annotated_metabolites %>% 
+  filter(condition %in% c("faecalis","faecium")) %>% 
+  mutate(classlabels = case_when(condition == "faecalis" ~ 0,
+                           TRUE ~ 1)) %>% 
+  select(classlabels,2:length(.)) %>% 
+   #absolutely needs to be a data frame and not a tibble for EFS package
+  as.data.frame()
+
+# Seting seed incase this isn't done internally in EFS
+set.seed(2)
+
+## Running EFS feature selection ##
+ensemble_result = EFS::ensemble_fs(efs_sel,
+                                   classnumber = 1,
+                                   cor_threshold = 0)
+
+## Formating the data as long ##
+ long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "row_id") %>% 
+  inner_join(gnps_annotations,by = "row_id")
+
+## Extracting top metabolites ##
+top = long %>% 
+  group_by(row_id,compound_name_cleaned) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) 
+
+## Pulling top N metabolites ##
+topn = top[1:10,] %>% 
+  pull(row_id)
+
+
+topn_metabolomics = tibble(row_id = topn)
+
+write_csv(topn_metabolomics,"01_r_processed_data/top10_faecalis_v_faecium_metabolomics_biomarkers.csv")
+
+## Filtering the data, combining annotation names ##
+filtered = long %>% 
+  filter(row_id %in% topn) 
+
+
+## Plotting the data ## 
+EFS_plot = filtered %>% 
+  ggplot(aes(reorder(compound_name_cleaned,value),value,fill = model))+
+  geom_col()+
+  coord_flip()+
+  viridis::scale_fill_viridis(discrete = TRUE)+
+  xlab("Metabolite Biomarkers")+
+  theme(legend.position = "bottom")
+
+EFS_plot
+
+#ggsave("02_figures/f5_faecalis_v_faecium_metabolomics/f5b.pdf",f5b,height = 8,width = 8)
+```
+
+mycophenolic acid and pc(17:1/0:0 + c25h51n1o7p1) were detected as two seperate row IDs. They were both found to be among the best biomarkers independantly from each other.
+
+### Plotting
+
+```{r,fig.height = 8, fig.width = 8}
+ROC_data = dplyr::filter(normalized_data,row_id %in% topn[1:2]) %>% 
+  dplyr::arrange(factor(row_id,topn)) %>% 
+  inner_join(gnps_annotations,by = "row_id") %>% 
+  filter(condition != "healthy") %>% 
+  mutate(infection_status = condition)
+
+
+top = make_violin_plot_metabolomics(ROC_data,topn[1:2],ncol = 2,pname = "p.signif")
+bottom = make_roc_metabolomics(ROC_data,ncol = 2)
+
+
+f5b = ggpubr::ggarrange(top,bottom,nrow = 2)
+
+f5b
+
+
+ggsave("02_figures/f5_faecalis_v_faecium_metabolomics/f5b.pdf",f5b,height = 8, width = 8)
+```
+
+# Figure 6 - Prediction of Clinical Outcome
+
+## A- Unsupervised clustering of Proteomics and Metabolomic data combined
+
+```{r,fig.height = 8, fig.width = 12}
+##Proteomics data ##
+pl = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv") %>% 
+  select(tmt_id = sample_id,everything())
+
+## Clinical metadata ##
+map = readxl::read_excel("00_r_input_data/proteomics_sample_mapping.xlsx") %>% 
+  mutate(tmt_id = paste0("plex",plex_number,".",TMT_channel)) %>% 
+  select(tmt_id,sample_id = sample_name)
+
+md = read_csv("00_r_input_data/clinical_metadata.csv") 
+
+md_final = inner_join(map,md,by = "sample_id")
+
+clean_clinical = inner_join(pl,md_final, by = "tmt_id")
+
+
+
+clean_clinical_wide = clean_clinical %>% 
+  select(sample_id,death_during_admission,Gene,Abundance) %>% 
+ tidyr::pivot_wider(names_from = Gene,
+              values_from = Abundance) %>% 
+  #removing the samples without death during admission info
+  filter(!is.na(death_during_admission)) %>% 
+  #filter(sample_id.y != "S49",
+         #sample_id.y != "S76") %>% 
+  dplyr::select_if(~ !any(is.na(.))) %>% 
+  #needs to be a dataframe or EFS freaks out. 
+  as.data.frame()
+
+
+
+### Combining all data ### 
+all= clean_clinical_wide
+
+# Getting into a format where we can do the clustering ## 
+clust_data = all[,3:283] %>% 
+   #Remove columns that only contain 0s 
+  select_if(colSums(.) != 0) %>% 
+  as.data.frame()
+
+annotation = all[,2] %>% 
+  as.data.frame()
+
+## Fixing the row names so they match for the heatmap ##
+rownames(annotation) = all$sample_id
+
+rownames(clust_data) = all$sample_id
+
+#calculating distance matrix
+d = dist(clust_data)
+## Generating a dendrogram without a heatmap ##
+library(dendextend)
+
+dend = as.dendrogram(hclust(d, method = "ward.D2"))
+
+# let's add some color: Red = dead, black = okay
+colors_to_use = c("#000000","#FF0000")[as.numeric(as.factor(all$death_during_admission))]
+
+#getting in the same order as dendrogram
+colors_to_use = colors_to_use[order.dendrogram(dend)]
+
+# Now we can color the brancehes
+dend = branches_color(dend,col = colors_to_use,) %>% 
+  set("branches_lwd", 8)
+
+# Plotting for manuscript
+pdf("02_figures/f6_prediction_of_clinical_outcome_proteomics/f6a.pdf",height = 8,
+    width = 12)
+plot(dend)
+dend %>% rect.dendrogram(k=2, 
+                           border = 8, lty = 5, lwd = 2)
+dev.off()
+
+#Plotting for this document
+plot(dend)
+dend %>% rect.dendrogram(k=2, 
+                           border = 8, lty = 5, lwd = 2)
+
+
+# Checking stats to see if there are significant differences between clusters when k=2
+xtab <- as.table(rbind(c(4, 8), c(13, 53)))
+dimnames(xtab) <- list(
+  group = c("k1", "k2"),
+  death = c("yes", "no")
+)
+
+fisher_test(xtab)
+```
+
+## B Volcano plot of Proteomics
+
+```{r,eval = FALSE}
+### Need to rerun msstats, this time changing the condition to be death upon admission ###
+# read in clincal metadata
+
+cmd = read_csv("00_r_input_data/clinical_metadata.csv") %>% 
+  select(BioReplicate = sample_id,death_during_admission)
+
+# Read MSstats.csv file.
+data = read_csv("00_r_input_data/msstats.csv")
+#Note that the condition of the bridge channel needs to be labeled as Norm
+annotation = read_csv("00_r_input_data/MSstatsTMT_annotation.csv") %>% 
+  inner_join(cmd,by = "BioReplicate") %>% 
+  select(-Condition) %>% 
+  rename(Condition = death_during_admission) %>% 
+  mutate(Condition = as.factor(as.character(Condition))) %>% 
+  mutate(Condition = case_when(is.na(Condition) ~ "unknown",
+                               TRUE ~ Condition))
+
+
+mstats = MSstatsTMT::PhilosophertoMSstatsTMTFormat(input = data,annotation)
+
+
+# use MSstats for protein summarization
+quant.msstats = MSstatsTMT::proteinSummarization(mstats,
+                                      method="msstats",
+                                      global_norm=TRUE,
+                                      reference_norm=TRUE,
+                                      remove_norm_channel = TRUE,
+                                      remove_empty_channel = TRUE)
+
+
+
+# Taking the pl_data and formatting appropriately
+pl_data = quant.msstats$ProteinLevelData %>% 
+  tidyr::separate(Protein, c("orientation","uniprotid","locus"),sep ="\\|") %>%
+  # Converting to gene name
+  inner_join(protein_to_gene,by = c("uniprotid" = "ProteinID")) %>% 
+  mutate(sample_id = paste0(Mixture,".",Channel))
+
+write_csv(pl_data,"01_r_processed_data/quant_msstats_protein_level_data_death.csv")
+  
+### Preforming the statistics ### 
+test.pairwise = MSstatsTMT::groupComparisonTMT(quant.msstats,
+                                               moderated = TRUE)
+
+
+
+stats =test.pairwise$ComparisonResult %>% 
+  filter(Label == "FALSE vs TRUE") %>% 
+  separate(Protein, c("orientation","uniprotid","locus"),sep ="\\|") %>% 
+  inner_join(protein_to_gene,by = c("uniprotid" = "ProteinID"))
+
+
+write_csv(stats,"01_r_processed_data/death_vs_life.csv")
+```
+
+```{r,fig.height=3.8, fig.width = 4}
+
+dvl = read_csv("01_r_processed_data/death_vs_life.csv") %>% 
+  filter(is.na(issue)) 
+
+
+f6a = dvl %>% 
+  ggplot(aes(log2FC,-log10(adj.pvalue)))+
+  geom_point(size = 0.5)+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed",color = "red")+
+  xlab("Log2FC (Live/Dead)")+
+  ggprism::theme_prism(base_size = 10)
+    
+
+f6a
+
+
+ggsave("02_figures/f6_prediction_of_clinical_outcome/f6a.pdf",f6a,height = 3.8, width = 4)
+
+
+# Extracting the signficiant proteins from the volcano plot for later use. 
+sig = dvl %>% 
+  filter(adj.pvalue <= 0.05)
+
+up_in_live = sig %>% 
+  filter(log2FC>0) %>% 
+  pull(Gene)
+
+
+up_in_dead = sig %>% 
+  filter(log2FC<0) %>% 
+  pull(Gene)
+```
+
+## B - GO Enrichment in Dead
+
+```{r,fig.height = 4, fig.width = 4}
+#Getting all the go annotations 
+go = read_csv("00_r_input_data/go_annotations.csv") %>% 
+  dplyr::select(1,length(.)) %>% 
+  tidyr::separate_rows(Gene.Ontology.IDs, sep = ';') %>% 
+  dplyr::mutate(Gene.Ontology.IDs = gsub(" ","",Gene.Ontology.IDs)) %>% 
+  # Going from Protein ID to gene ID
+  left_join(protein_to_gene,by = c("Entry" = "ProteinID")) %>% 
+  select(-Entry) %>% 
+  select(Entry = Gene,Gene.Ontology.IDs)
+
+#usng enricher
+TERM2GENE = go %>% 
+  dplyr::select(TERM = Gene.Ontology.IDs,GENE = Entry) %>% 
+  as.data.frame() 
+
+TERM2NAME = AnnotationDbi::select(GO.db::GO.db,keys = unique(TERM2GENE$TERM),columns = c("TERM")) %>% 
+  as.data.frame()
+
+# Perfomring GO enrichment
+enrich = clusterProfiler::enricher(up_in_dead,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME)
+
+f6b = clusterProfiler::cnetplot(enrich, categorySize="pvalue",circular = FALSE,categorySize="pvalue",cex_label_category = 1,showCategory = 100,cex_label_gene = 0.5)+
+  theme(legend.position = "none")
+
+f6b 
+
+ggsave("02_figures/f6_prediction_of_clinical_outcome/f6b.pdf",f6b,height = 4, width = 4)
+
+```
+
+## D - GO Enrichment in Live
+
+```{r,fig.height = 4, fig.width = 4}
+#Getting all the go annotations 
+go = read_csv("00_r_input_data/go_annotations.csv") %>% 
+  dplyr::select(1,length(.)) %>% 
+  tidyr::separate_rows(Gene.Ontology.IDs, sep = ';') %>% 
+  dplyr::mutate(Gene.Ontology.IDs = gsub(" ","",Gene.Ontology.IDs)) %>% 
+  # Going from Protein ID to gene ID
+  left_join(protein_to_gene,by = c("Entry" = "ProteinID")) %>% 
+  select(-Entry) %>% 
+  select(Entry = Gene,Gene.Ontology.IDs)
+
+#usng enricher
+TERM2GENE = go %>% 
+  dplyr::select(TERM = Gene.Ontology.IDs,GENE = Entry) %>% 
+  as.data.frame() 
+
+TERM2NAME = AnnotationDbi::select(GO.db::GO.db,keys = unique(TERM2GENE$TERM),columns = c("TERM")) %>% 
+  as.data.frame()
+
+# Perfomring GO enrichment
+enrich = clusterProfiler::enricher(up_in_live,
+         universe = go$Entry,
+         TERM2GENE = TERM2GENE,
+         TERM2NAME = TERM2NAME)
+
+f6c = clusterProfiler::cnetplot(enrich, categorySize="pvalue",
+                              circular = FALSE,
+                              categorySize="pvalue",
+                              cex_label_category = 1,
+                              showCategory = 100,
+                              cex_label_gene = 0.5, )+
+  theme(legend.position = "none")
+f6c
+
+ggsave("02_figures/f6_prediction_of_clinical_outcome/f6c.pdf",f6c)
+```
+
+## D - Proteomic Biomarkers to predict death
+
+### Data Processing
+```{r,fig.height = 6, fig.width = 16}
+##reading in the data##
+pl = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv") %>% 
+  rename(tmt_id = sample_id)
+
+
+## Clinical metadata ##
+map = readxl::read_excel("00_r_input_data/proteomics_sample_mapping.xlsx") %>%
+  mutate(tmt_id = paste0("plex",plex_number,".",TMT_channel)) %>% 
+  select(tmt_id,sample_id = sample_name)
+
+md = read_csv("00_r_input_data/clinical_metadata.csv") 
+
+md_final = inner_join(map,md,by = "sample_id")
+
+clean_clinical = inner_join(pl,md_final, by = "tmt_id") %>% 
+  # Don't need the healthy samples here
+  filter(Condition != "Healthy") %>%
+  #IGKC gets identified by EFS even though it is a terrible biomarker. Not sure why, just going to remove it
+  filter(Gene != "IGKC") %>% 
+   # - messes up EFS for some reason, very annoying. 
+  mutate(Gene = gsub("-","_",Gene)) %>% 
+  select(sample_id,death_during_admission,Gene,Abundance) %>% 
+ tidyr::pivot_wider(names_from = Gene,
+              values_from = Abundance) %>% 
+  #Removing samples with NA.
+  filter(!is.na(death_during_admission)) %>% 
+  dplyr::select_if(~ !any(is.na(.))) %>% 
+  #needs to be a dataframe or EFS freaks out. 
+  as.data.frame() %>% 
+  select(-sample_id)
+
+
+set.seed(2)
+ensemble_result = EFS::ensemble_fs(clean_clinical,1,cor_threshold = 0)
+
+long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "Gene") %>% 
+  #converting genes back to proper notation. 
+  mutate(Gene = gsub("_","-",Gene))
+
+
+top = long %>% 
+  group_by(Gene) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) 
+
+topn = top[1:10,] %>% 
+  pull(Gene)
+
+
+topn_out = tibble(Gene = topn)
+
+write_csv(topn_out,"01_r_processed_data/top10_live_v_dead_proteomics_biomarkers.csv")
+
+filtered = long %>% 
+  filter(Gene %in% topn) 
+
+EFS = filtered %>% 
+  ggplot(aes(reorder(Gene,value),value,fill = model))+
+  geom_col()+
+  coord_flip()+
+  viridis::scale_fill_viridis(discrete = TRUE)+
+  ggtitle("Top 10 Performing Protein Biomarkers")+
+  xlab("Protein Biomarkers")
+
+
+EFS
+```
+
+
+
+### Plotting
+
+```{r,fig.height=8,fig.width=8}
+source("functions.R")
+
+data = inner_join(pl,md_final, by = "tmt_id") %>%
+  filter(Condition != "Healthy") %>% 
+  mutate(Condition = death_during_admission) %>% 
+  filter(!is.na(Condition))
+
+top = make_violin_plot_proteomics(data,topn[1:2],pname = "p.signif",ncol = 2)
+
+bottom = make_roc_proteomics(data,topn[1:2],ncol = 2)
+
+
+f6d = ggpubr::ggarrange(top,bottom,nrow = 2)
+
+f6d
+
+ggsave("02_figures/f6_prediction_of_clinical_outcome/f6d.pdf",f6d,height = 8, width = 8)
+```
+## E- Metabolomics Volcano Plot
+
+```{r,fig.height = 3.8, fig.width = 4 }
+## Reading in Data
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv") %>% 
+  filter(!is.na(death_during_admission))
+
+# Performing statistics so we can make a volcano plot
+  stat = normalized_data %>% 
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ death_during_admission) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+
+# Calculating log2fc
+log2fc_data = normalized_data %>%  
+    dplyr::select(metabolomics_id,row_id,death_during_admission,norm_value) 
+
+
+# Extracting just the faecalis data
+dead = log2fc_data %>% 
+  filter(death_during_admission == TRUE) %>% 
+  group_by(row_id) %>% 
+  summarise(dead = mean(norm_value))
+
+# Extracting just the faecium data 
+live = log2fc_data %>% 
+  filter(death_during_admission == FALSE) %>% 
+  group_by(row_id) %>% 
+  summarise(live = mean(norm_value))
+
+# Calculating log2fc
+log2fc = inner_join(dead,live,by = "row_id") %>% 
+  mutate(log2fc_live_dead = log2(live/dead))
+  
+# Combining log2fc and statistics 
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE))
+
+
+annotations = vp %>% 
+  filter(p.adj_fdr <= 0.05,
+         annotated == TRUE) %>% 
+  inner_join(gnps_annotations, by = "row_id")
+  
+  
+f6e = vp %>% 
+  ggplot(aes(log2fc_live_dead,-log10(p.adj_fdr),color = annotated))+
+  geom_point(size = 0.5)+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed",color = "red")+
+  xlab("log2FC (Live/Dead)")+
+  theme(legend.position = "bottom")+
+  ggrepel::geom_label_repel(data = annotations,aes(label = compound_name_cleaned,x= log2fc_live_dead, y = -log10(p.adj_fdr)),size = 2.5,label.size = 0.1,nudge_y = 0.1)+
+  ggprism::theme_prism(base_size = 10)+
+  theme(legend.position = "none")
+  
+f6e
+
+ggsave(filename = "02_figures/f6_prediction_of_clinical_outcome/f6e.pdf",f6e,height = 3.8, width = 4)
+```
+
+## F- Evaluation of Metabolomics Biomarkers to Predict Death
+
+```{r,fig.height = 14,fig.width = 14}
+## Reading in the normalized data ## 
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+
+## Switching to the wide format ### 
+norm_wide = normalized_data %>%
+  select(-row_m_z,-row_retention_time,-value) %>% 
+  tidyr::pivot_wider(names_from = row_id,values_from = norm_value)
+
+## Looking for only columns that were annotated ## 
+gnps_and_in_norm = intersect(unique(gnps_annotations$row_id), colnames(norm_wide))
+
+gnps_annotated_metabolites = norm_wide %>% 
+  as.data.frame() %>% 
+  select(death_during_admission,gnps_and_in_norm) %>% 
+  filter(!is.na(death_during_admission))
+
+# Seting seed incase this isn't done internally in EFS
+set.seed(2)
+
+## Running EFS feature selection ##
+ensemble_result = EFS::ensemble_fs(gnps_annotated_metabolites,
+                                   classnumber = 1,cor_threshold = 0)
+
+## Formating the data as long ##
+ long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.),names_to = "row_id")
+
+## Extracting top metabolites ##
+top = long %>% 
+  group_by(row_id) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) 
+
+## Pulling top N metabolites ##
+topn = top[1:10,] %>% 
+  pull(row_id)
+
+
+topn_out = tibble(row_id = topn )
+
+write_csv(topn_out,"01_r_processed_data/top10_live_v_dead_metabolomics_biomarkers.csv")
+
+
+data = normalized_data %>% 
+  inner_join(gnps_annotations,by = "row_id") %>% 
+  filter(!is.na(death_during_admission)) %>% 
+  filter(row_id %in% topn[1:2]) %>% 
+  mutate(condition = as.character(death_during_admission))
+
+
+top = make_violin_plot_metabolomics(data,ncol = 2,topn = topn[1:2],pname = "p.signif")
+bottom = make_roc_metabolomics(data,ncol = 2)
+
+
+
+
+f6f = ggpubr::ggarrange(top,bottom,nrow = 2)
+
+f6f
+ggsave("02_figures/f6_prediction_of_clinical_outcome/f6f.pdf",f6f,height = 8,width = 8)
+
+
+```
+
+# Suplemental Figures
+
+## S1 - Overview of Analysis Workflow
+
+This is generated in draw.io
+
+## S2 - Networks 
+
+See Figure 2 B and Figure 3 C
+
+## S3 - Known Biomarkers of Infection 
+
+### A - ROC curves.
+
+```{r,fig.height=4, fig.width = 8}
+pl = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+known_indicatiors_of_bacterial_infection = c("CRP","SAA1")
+
+f = dplyr::filter(pl,Gene %in% known_indicatiors_of_bacterial_infection) %>%
+  mutate(Condition = case_when(Condition == "Healthy" ~ "Healthy",
+                               TRUE ~ "Infected"))
+
+data = f
+           
+  list = list()
+  
+  for(i in known_indicatiors_of_bacterial_infection){
+    
+    loop = filter(data, Gene == i)
+    
+    mod = glm(as.factor(Condition) ~ Abundance, 
+              data = data,
+              family = "binomial") 
+    
+    predicted <- predict(mod ,family = "binomial", loop, type="response")
+    
+    #define object to plot
+    rocobj <- pROC::roc(loop$Condition, predicted)
+    
+    auc = round(as.numeric(gsub(".*: ", "",rocobj$auc)),2)
+    #create ROC plot
+    p1 = pROC::ggroc(rocobj)+
+      ggtitle(paste0(i," AUC: ",auc))
+    
+    
+    list[[i]] = p1
+  }
+  s3a = do.call("grid.arrange", c(list, ncol = 2),)
+  s3a
+  
+
+
+ggsave("03_supplemental/s3_known_biomarkers_of_infection/s3a.pdf",s3a)
+
+```
+
+### B - Violin Plot
+
+```{r,fig.height = 6, fig.width = 8 }
+#Loading and processing the data 
+#reading in the data
+pl = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+# C-reactive Protein = "P02741
+# Calcitonin = P01258
+# Serum Amyloid A = P0DJI8
+
+known_indicatiors_of_bacterial_infection = c("CRP","SAA1")
+
+f = dplyr::filter(pl,Gene %in% known_indicatiors_of_bacterial_infection)
+
+library(rstatix)
+library(ggpubr)
+
+ttest <-
+  f %>%
+  group_by(Gene) %>%
+  rstatix::t_test(Abundance ~ Condition) %>%
+  add_y_position()
+
+
+s3b = f %>% 
+  ggplot(aes(Condition,Abundance))+
+  geom_violin()+
+  geom_point()+
+  ggpubr::stat_pvalue_manual(ttest)+
+  ylab("Abundance")+
+  facet_wrap(~Gene)
+
+s3b
+
+
+ggsave("03_supplemental/s3_known_biomarkers_of_infection/s3b.pdf",s3b)
+```
+## S4 - Top 10 identified biomarkers Healthy vs Infected
+
+
+
+
+
+### A- proteomics violin plot 
+
+```{r,fig.height=6,fig.width=16}
+# Reading in data
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+topn = read_csv("01_r_processed_data/top10_infected_v_healthy_proteomics_biomarkers.csv") %>% pull(Gene)
+
+# Processing data 
+ROC_data = dplyr::filter(protein_sum,Gene %in% topn) #%>% 
+  #dplyr::mutate(Condition = case_when(Condition %in% c("Faecalis","Faecium") ~ "infected",
+                                    #  TRUE ~ Condition)) 
+
+
+source("functions.R")
+
+    
+s4a = make_violin_plot_proteomics(ROC_data,topn)
+
+s4a
+
+ggsave("03_supplemental/s4_biomarkers_healthy_v_infected/s4a.pdf",s4a, height = 6 ,width=16)
+```
+
+### B- Proteomics ROC
+
+```{r,fig.height=6,fig.width = 16}
+# Processing data 
+ROC_data = dplyr::filter(protein_sum,Gene %in% topn) %>% 
+  dplyr::mutate(Condition = case_when(Condition %in% c("Faecalis","Faecium") ~ "infected",
+                                     TRUE ~ Condition)) 
+  
+  
+  source("functions.R")
+
+    
+s4b = make_roc_proteomics(ROC_data,topn)
+
+s4b
+
+ggsave("03_supplemental/s4_biomarkers_healthy_v_infected/s4b.pdf",s4b, height = 6 ,width=16)
+
+```
+
+
+
+### C - Metabolomics Violin
+
+```{r,fig.height=6,fig.width = 16}
+## Reading in the normalized data ## 
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+
+topn = read_csv("01_r_processed_data/top10_infected_v_healthy_metabolomics_biomarkers.csv") %>% pull(row_id)
+
+ROC_data = dplyr::filter(normalized_data,row_id %in% topn) %>% 
+  dplyr::arrange(factor(row_id,topn)) %>% 
+  inner_join(gnps_annotations,by = c("row_id" = "row_id"))
+
+source("functions.R")
+
+s4c = make_violin_plot_metabolomics(ROC_data,topn)
+
+
+ggsave("03_supplemental/s4_biomarkers_healthy_v_infected/s4c.pdf",s4c,height = 6 ,width=16)
+
+```
+### D - Metabolomics ROC
+
+```{r,fig.height=6,fig.width = 16}
+## Reading in the normalized data ## 
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+
+topn = read_csv("01_r_processed_data/top10_infected_v_healthy_metabolomics_biomarkers.csv") %>% pull(row_id)
+
+ROC_data = dplyr::filter(normalized_data,row_id %in% topn) %>% 
+  dplyr::arrange(factor(row_id,topn)) %>% 
+  inner_join(gnps_annotations,by = c("row_id" = "row_id")) %>% 
+  dplyr::mutate(condition = case_when(condition %in% c("faecalis","faecium") ~ "infected",
+                                     TRUE ~ condition)) 
+
+source("functions.R")
+
+s4d = make_roc_metabolomics(ROC_data,)
+
+
+ggsave("03_supplemental/s4_biomarkers_healthy_v_infected/s4d.pdf",s4d,height = 6 ,width=16)
+
+```
+
+## S5 - Top 10 Faecalis vs Faecium
+
+
+### A Proteomics violin
+
+```{r,fig.height=6, fig.width = 16}
+# Reading in data
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+topn = read_csv("01_r_processed_data/top10_faecalis_v_faecium_proteomics_biomarkers.csv") %>% pull(Gene)
+
+# Processing data 
+ROC_data = dplyr::filter(protein_sum,Gene %in% topn) 
+
+source("functions.R")
+
+s5a = make_violin_plot_proteomics(ROC_data,topn)
+
+s5a
+
+ggsave("03_supplemental/s5_biomarkers_faecalis_v_faecium/s5a.pdf",s5a,height = 6 ,width=16)
+```
+### B- Proteomics ROC
+
+```{r,fig.height =6, fig.width = 16}
+# Processing data 
+ROC_data = dplyr::filter(protein_sum,Gene %in% topn) %>% 
+  filter(Condition != "Healthy")
+
+source("functions.R")
+
+s5b = make_roc_proteomics(ROC_data,topn)
+
+s5b
+
+ggsave("03_supplemental/s5_biomarkers_faecalis_v_faecium/s5b.pdf",s5b,height = 6 ,width=16)
+```
+
+### C- metabolomics violin
+
+```{r,fig.height = 6, fig.width = 16}
+## Reading in the normalized data ## 
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+
+topn = read_csv("01_r_processed_data/top10_faecalis_v_faecium_metabolomics_biomarkers.csv") %>% pull(row_id)
+
+ROC_data = dplyr::filter(normalized_data,row_id %in% topn) %>% 
+  dplyr::arrange(factor(row_id,topn)) %>% 
+  inner_join(gnps_annotations,by = c("row_id" = "row_id"))
+
+s5c = make_violin_plot_metabolomics(ROC_data,topn)
+
+ggsave("03_supplemental/s5_biomarkers_faecalis_v_faecium/s5c.pdf",s5c,height = 6 ,width=16)
+
+```
+### D- metabolomics ROC
+
+```{r,fig.height =6, fig.width = 16}
+ROC_data = dplyr::filter(normalized_data,row_id %in% topn) %>% 
+  dplyr::arrange(factor(row_id,topn)) %>% 
+  inner_join(gnps_annotations,by = c("row_id" = "row_id")) %>% 
+  filter(condition != "healthy")
+
+s5d = make_roc_metabolomics(ROC_data)
+
+ggsave("03_supplemental/s5_biomarkers_faecalis_v_faecium/s5d.pdf",s5d,height = 6 ,width=16)
+```
+
+
+
+
+## S6- Top 10 Mortality vs Survival 
+
+
+### A- Proteomics violin
+
+```{r, fig.height = 6, fig.width = 16}
+##reading in the data##
+pl = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv") %>% 
+  rename(tmt_id = sample_id)
+
+
+## Clinical metadata ##
+map = readxl::read_excel("00_r_input_data/proteomics_sample_mapping.xlsx") %>%
+  mutate(tmt_id = paste0("plex",plex_number,".",TMT_channel)) %>% 
+  select(tmt_id,sample_id = sample_name)
+
+md = read_csv("00_r_input_data/clinical_metadata.csv") 
+
+md_final = inner_join(map,md,by = "sample_id")
+
+clean_clinical = inner_join(pl,md_final, by = "tmt_id") %>% 
+  # Don't need the healthy samples here
+  filter(Condition != "Healthy") %>% 
+   # - messes up EFS for some reason, very annoying. 
+  mutate(Gene = gsub("-","_",Gene)) %>% 
+  select(sample_id,death_during_admission,Gene,Abundance) %>% 
+ tidyr::pivot_wider(names_from = Gene,
+              values_from = Abundance) %>% 
+  #Removing samples with NA.
+  filter(!is.na(death_during_admission)) %>% 
+  dplyr::select_if(~ !any(is.na(.))) %>% 
+  #needs to be a dataframe or EFS freaks out. 
+  as.data.frame() %>% 
+  select(-sample_id)
+
+
+topn = read_csv("01_r_processed_data/top10_live_v_dead_proteomics_biomarkers.csv") %>% 
+  pull(Gene)
+
+
+data = inner_join(pl,md_final, by = "tmt_id") %>%
+  filter(Condition != "Healthy") %>% 
+  mutate(Condition = death_during_admission) %>% 
+  filter(!is.na(Condition))
+
+s6a = make_violin_plot_proteomics(data,topn,pname="p.signif")
+
+
+ggsave("03_supplemental/s6_biomarkers_survival_v_mortality/s6a.pdf",s6a,height = 6, width = 16)
+```
+
+
+### B- Proteomics ROC
+
+```{r,fig.height = 6, fig.width = 16}
+
+s6b = make_roc_proteomics(data,topn)
+
+ggsave("03_supplemental/s6_biomarkers_survival_v_mortality/s6b.pdf",s6b,height = 6, width = 16)
+
+```
+
+
+### C - Metabolomics violin
+
+```{r,fig.height = 6, fig.width = 16}
+## Reading in the normalized data ## 
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+
+topn = read_csv("01_r_processed_data/top10_live_v_dead_metabolomics_biomarkers.csv") %>% 
+  pull(row_id)
+
+data = normalized_data %>% 
+  inner_join(gnps_annotations,by = "row_id") %>% 
+  filter(!is.na(death_during_admission)) %>% 
+  filter(row_id %in% topn) %>% 
+  mutate(condition = as.character(death_during_admission)) 
+
+s6c = make_violin_plot_metabolomics(data,topn,ncol = 5,pname="p.signif")
+
+
+ggsave("03_supplemental/s6_biomarkers_survival_v_mortality/s6c.pdf",s6c,height = 6,width = 16)
+
+
+```
+
+
+### D - Metabolomics ROC
+
+```{r,fig.height = 6, fig.width = 16}
+s6d = make_roc_metabolomics(data)
+
+
+ggsave("03_supplemental/s6_biomarkers_survival_v_mortality/s6d.pdf",s6d,height = 6,width = 16)
+```
+
+## S7- metadata assesment of all biomarkers ided in the study
+
+### A- Faecalis vs Faecium Proteomics.
+
+```{r,fig.height = 8, fig.width = 16}
+
+clinical_md = read_csv("00_r_input_data/clinical_metadata.csv")
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+# Defining the input metadata. Need to chose which columns to keep here. 
+md_assesment_data= protein_sum %>% 
+  filter(Condition != "Healthy") %>% 
+  inner_join(clinical_md, by = c("BioReplicate" = "sample_id")) %>% 
+  select(sample_id,Gene,bmi,bacteremia_duration,charleson_index,congestive_heart_failure,
+         death_during_admission,history_of_myocardial_infarction,transplant_type,pathogen,icu_admission,
+         hypotension,gender,race,smoking,polymicrobial_bacteremia,neutropenia_anc_1500,leukemia_or_lymphoma,Abundance) %>% 
+  ungroup()
+  
+
+topn = read_csv("01_r_processed_data/top10_faecalis_v_faecium_proteomics_biomarkers.csv") %>% 
+  pull(Gene)
+
+source("functions.R")
+
+stat = metadata_assesment(md_assesment_data,
+                          metric = Gene,
+                          sample_id = sample_id,
+                          features = topn,
+                          outcome = Abundance,
+                          outcome_c = "Abundance")
+
+
+  stat_final = rstatix::adjust_pvalue(stat,"p",output.col = "p.adj",method = "fdr") 
+
+
+
+## Plotting ###
+s7a = stat_final %>% 
+  ggplot(aes(reorder(variable,p.adj),-log10(p.adj)))+
+  geom_col()+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed", color = "red")+
+  coord_flip()+
+  facet_wrap(~Gene,nrow = 2) +
+  xlab("metadata_field")
+
+s7a
+
+ggsave("03_supplemental/s7_biomarkers_clinical_metadata_assessment/s7a.pdf",s7a,height = 6, width = 16)
+```
+
+### B- Faecalis vs Faecium Metabolomics.
+
+```{r,fig.height = 8, fig.width = 16}
+metabolomics_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+
+m = inner_join(metabolomics_data,gnps_annotations,by = "row_id")
+
+# Defining the input metadata. Need to chose which columns to keep here. 
+md_assesment_data= m %>%
+  filter(condition != "healthy") %>% 
+  select(sample_id,row_id,bmi,bacteremia_duration,charleson_index,congestive_heart_failure,
+         death_during_admission,history_of_myocardial_infarction,transplant_type,pathogen,icu_admission,
+         hypotension,gender,race,smoking,polymicrobial_bacteremia,neutropenia_anc_1500,leukemia_or_lymphoma,norm_value) %>% 
+  ungroup()
+
+topn = read_csv("01_r_processed_data/top10_faecalis_v_faecium_metabolomics_biomarkers.csv") %>% 
+  pull(row_id)
+
+source("functions.R")
+
+stat = metadata_assesment(md_assesment_data,
+                          metric = row_id,
+                          sample_id = sample_id,
+                          features = topn,
+                          outcome = norm_value,
+                          outcome_c = "norm_value")
+
+
+  stat_final = rstatix::adjust_pvalue(stat,"p",output.col = "p.adj",method = "fdr") 
+
+
+
+## Plotting ###
+s7b = stat_final %>% 
+  inner_join(gnps_annotations,by = "row_id") %>% 
+  ggplot(aes(reorder(variable,p.adj),-log10(p.adj)))+
+  geom_col()+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed", color = "red")+
+  coord_flip()+
+  facet_wrap(~compound_name_cleaned,nrow = 2) +
+  xlab("metadata_field")
+
+s7b
+
+ggsave("03_supplemental/s7_biomarkers_clinical_metadata_assessment//s7b.pdf",s7b,height = 6, width = 16)
+```
+
+### C - Proteomic Biomarkers Identified in Live vs Dead.
+
+```{r,fig.height = 8, fig.width = 16}
+clinical_md = read_csv("00_r_input_data/clinical_metadata.csv")
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+# Defining the input metadata. Need to chose which columns to keep here. 
+md_assesment_data= protein_sum %>% 
+  inner_join(clinical_md, by = c("BioReplicate" = "sample_id")) %>% 
+  filter(!is.na(death_during_admission)) %>% 
+  select(sample_id,Gene,bmi,bacteremia_duration,charleson_index,congestive_heart_failure,
+         death_during_admission,history_of_myocardial_infarction,transplant_type,pathogen,icu_admission,
+         hypotension,gender,race,smoking,polymicrobial_bacteremia,neutropenia_anc_1500,leukemia_or_lymphoma,Abundance) %>% 
+  ungroup()
+  
+
+topn = read_csv("01_r_processed_data/top10_live_v_dead_proteomics_biomarkers.csv") %>% 
+  pull(Gene)
+
+source("functions.R")
+
+stat = metadata_assesment(md_assesment_data,
+                          metric = Gene,
+                          sample_id = sample_id,
+                          features = topn,
+                          outcome = Abundance,
+                          outcome_c = "Abundance")
+
+
+  stat_final = rstatix::adjust_pvalue(stat,"p",output.col = "p.adj",method = "fdr") 
+
+
+
+## Plotting ###
+s7c = stat_final %>% 
+  ggplot(aes(reorder(variable,p.adj),-log10(p.adj)))+
+  geom_col()+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed", color = "red")+
+  coord_flip()+
+  facet_wrap(~Gene,nrow = 2) +
+  xlab("metadata_field")
+
+
+
+s7c
+
+ggsave("03_supplemental/s7_biomarkers_clinical_metadata_assessment//s7c.pdf",s7c,height = 6, width = 16)
+```
+
+### D - Metabolomic Biomarker Identified in Live vs Dead
+
+```{r,fig.height = 8, fig.width = 16}
+metabolomics_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+
+m = inner_join(metabolomics_data,gnps_annotations,by = "row_id")
+
+# Defining the input metadata. Need to chose which columns to keep here. 
+md_assesment_data= m %>%
+  filter(!is.na(death_during_admission)) %>% 
+  select(sample_id,row_id,bmi,bacteremia_duration,charleson_index,congestive_heart_failure,
+         death_during_admission,history_of_myocardial_infarction,transplant_type,pathogen,icu_admission,
+         hypotension,gender,race,smoking,polymicrobial_bacteremia,neutropenia_anc_1500,leukemia_or_lymphoma,norm_value) %>% 
+  ungroup()
+
+topn = read_csv("01_r_processed_data/top10_live_v_dead_metabolomics_biomarkers.csv") %>% 
+  pull(row_id)
+
+source("functions.R")
+
+stat = metadata_assesment(md_assesment_data,
+                          metric = row_id,
+                          sample_id = sample_id,
+                          features = topn,
+                          outcome = norm_value,
+                          outcome_c = "norm_value")
+
+
+  stat_final = rstatix::adjust_pvalue(stat,"p",output.col = "p.adj",method = "fdr") 
+
+
+
+## Plotting ###
+s7d = stat_final %>% 
+  inner_join(gnps_annotations,by = "row_id") %>% 
+  ggplot(aes(reorder(variable,p.adj),-log10(p.adj)))+
+  geom_col()+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed", color = "red")+
+  coord_flip()+
+  facet_wrap(~compound_name_cleaned,nrow = 2) +
+  xlab("metadata_field")
+
+s7d
+
+ggsave("03_supplemental/s7_biomarkers_clinical_metadata_assessment/s7d.pdf",s7d,height = 6, width = 16)
+
+
+```
+
+
+
+
+## S8 -Cytokine Inference.
+
+Network-based Cytokine Inference Knowledge-based networks were used to infer the relative contributions of major cytokines on the observed proteomic alterations. First, a list of cytokines was manually curated (TGFb, TNF, IFN, IL1-40, CXCL1-16, CCL1-27) and submitted with the significantly altered proteins (uncorrected ANOVA p \< 0.05) to the STRING-db tool (all active interaction sources, interaction score \> 0.4). The network was exported into a simple tabular output and cytokines were profiled for their enrichment in mortality clusters (pMortality+, pMortality and pMortality) using the following approach. First, cytokines were filtered to have at least five connections to mortality networks. Then, the proportion of each cytokine within the mortality clusters (ie. number of cytokine-mortality cluster connections relative to the total connections within mortality clusters) was compared to the proportion of each cytokine in the entire dataset (ie. number of cytokine-protein connections relative to total connections within the entire dataset). Significance was determined using Chi-square tests and a fold-change was calculated by dividing the proportion of cytokine-mortality connections by the proportion of cytokine connections within the total dataset. A final enrichment score was calculated by multiplying the -log10(p value) from the Chisquare test by the log2(fold-change of enrichment). By including the total number of connections that each cytokine had in the entire dataset as a background, any enrichment bias due to higher annotation rates for popular cytokines in STRING-db is controlled for.
+
+### Upstream Data Processing
+
+```{r}
+### Loading data ###
+faecalis_v_faecium = readr::read_csv("01_r_processed_data/faecalis_v_faecium.csv")
+# Name Mapping 
+annotations = read_csv("00_r_input_data/gene_uniprot_annotations.csv") 
+#changing the names to uniprotid
+faecalis_v_faecium = left_join(faecalis_v_faecium,annotations,by = c("uniprotid"))
+# reading in the curated cytokine list
+cytokine_list = read_csv("00_r_input_data/jacobs_cytokine_list.csv",skip = 1)
+
+### Cytokine Network generated for all proteins detected in the study ### 
+background = faecalis_v_faecium %>% 
+  pull(gene_name)
+
+#exporting file that we can use with the stringdb web tool
+#https://www.string-db.org/cgi/input?sessionId=bjuiDWoZnTQb&input_page_show_search=on
+all_proteins_and_cytokines = c(background,cytokine_list$cytokines)
+write_lines(all_proteins_and_cytokines,"01_r_processed_data/cytokine_inference/00_all_proteins_and_cytokines.csv")
+
+# Results were exported from the stringdb web tool. 
+# Settings were set as follows: minimum required interaction score = 0.400 (medium),  active interaction sources = all (textmining, neighborhood, experiments, gene fusions, databases, co-occurenece, co-expression)
+# Gene names that did not find a map were disregarded. 
+# Was exported as tabular text output with reciprocal edges
+
+# Reading in results input into string db using faecalis_out proteins 
+string_db_results = read_tsv("01_r_processed_data/cytokine_inference/01_all_proteins_and_cytokines_string_db_out.tsv") %>% 
+  #only keeping connections that are between a protein identified and cytokines
+  filter(`#node1` %in% background & `node2` %in% cytokine_list$cytokines)
+
+
+write_csv(string_db_results,"01_r_processed_data/cytokine_inference/02_all_proteins_and_cytokines_string_db_out_filtered.csv")
+
+# counting the number of times a cytokine interacted with a detected protein
+
+n_background_proteins = length(background)
+
+background_cytokines = string_db_results %>% 
+  group_by(node2) %>% 
+  summarise(n = n()) %>% 
+  mutate(condition = "background_present")
+
+write_lines(cytokine_list$cytokines,"01_r_processed_data/cytokine_inference/cytokine_node_list")
+```
+
+### A - Overview of entire network
+
+This figure is generated in cytoscape using 02_all_proteins_and_cytokines_string_db_out_filtered.csv as the input network. Biopax style was used. Labels were removed. Background was changed to white and the edges were changed to black with a transparency of 75. Nodes in node 2 were selected using the cytokine_node_list file and their size (40), color (dark red) and the shape (diamond) was changed to distinguish the cytokines from other nodes.
+
+4 cytoscape diagrams were created using the initial plot as a template in order to highlight the protein nodes by the protein belonging to each condition. Keeping with the scheme of the paper, healthy samples were colored yellow, faecalis infected samples were colored navy, and faecium colored samples were colored turquoise.
+
+### B - Explanation of the stats used to identify signficant cytokines
+
+This figure was created in biorender.
+
+### C - Cytokines that were found to be significantly altered among the conditions studied.
+
+#### Infected
+
+```{r,fig.height = 10,fig.width = 5}
+## Doing this for Infected vs Background ##
+
+### Now lets try doing this in Infected vs Healthy ### 
+infected_vs_healthy = read_csv("01_r_processed_data/Infected_vs_Healthy.csv")
+# Name Mapping 
+annotations = read_csv("00_r_input_data/gene_uniprot_annotations.csv") 
+#changing the names to uniprotid
+infected_vs_healthy = left_join(infected_vs_healthy,annotations,by = c("uniprotid"))
+
+# figuring otu what genes were up in infected
+up_in_infected = infected_vs_healthy %>% 
+  filter(log2FC>0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  arrange(adj.pvalue) %>% 
+  pull(gene_name)
+
+n_infected_proteins = length(up_in_infected)
+
+infected_cytokines = string_db_results %>% 
+  filter(`#node1` %in% up_in_infected) %>% 
+  group_by(node2) %>% 
+  summarise(n= n()) %>% 
+  mutate(condition = "infected_present")
+
+
+background_infected = bind_rows(background_cytokines,infected_cytokines) %>% 
+  pivot_wider(names_from = condition, values_from = n) %>% 
+  mutate(infected_present = replace_na(infected_present,0),
+         background_absent = n_background_proteins- background_present,
+         infected_absent = n_infected_proteins - infected_present)
+      
+# Making a contingency table 
+
+out = data.frame() 
+
+for(i in unique(background_infected$node2)){
+  
+  contingency_table_present = background_infected %>% 
+  filter(node2 == i) %>% 
+  select(infected_present,background_present) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(present = V1)
+ 
+  
+  contingency_table_absent =background_infected %>% 
+  filter(node2 == i) %>% 
+  select(infected_absent,background_absent) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(absent = V1)
+  
+  contingency_table = bind_cols(contingency_table_present,contingency_table_absent) %>% 
+  as.matrix()
+  
+  stat = rstatix::fisher_test(contingency_table) %>% 
+    mutate(cytokine = i )
+  
+  out = rbind(stat,out)
+  
+}
+
+corrected_pvalues = out %>% 
+  rstatix::adjust_pvalue(method = "fdr")
+
+# Now calculating fold change 
+
+log2fc = background_infected %>% 
+  select(node2,
+         background_present,
+         infected_present) %>% 
+  mutate(n_background_proteins = n_background_proteins,
+         n_infected_proteins = n_infected_proteins,
+         proportion_infected = infected_present/n_infected_proteins,
+         proportion_background = background_present/n_background_proteins,
+         log2fc = log2(proportion_infected/proportion_background)) %>% 
+  select(node2,log2fc,proportion_in_condition = proportion_infected,
+         proportion_in_background = proportion_background)
+  
+  
+# all metrics
+infected_metrics = corrected_pvalues %>% 
+  inner_join(log2fc,by = c("cytokine" ="node2")) %>% 
+  mutate(enrichment_score = -log10(p.adj) * log2fc) %>% 
+  mutate(condition = "infected")
+
+
+write_lines(up_in_infected,"01_r_processed_data/cytokine_inference/infected_protein_list")
+
+```
+
+#### Healthy
+
+```{r}
+### Now lets try doing this in Infected vs Healthy ### 
+infected_vs_healthy = read_csv("01_r_processed_data/Infected_vs_Healthy.csv")
+# Name Mapping 
+annotations = read_csv("00_r_input_data/gene_uniprot_annotations.csv") 
+#changing the names to uniprotid
+infected_vs_healthy = left_join(infected_vs_healthy,annotations,by = c("uniprotid"))
+
+# up in healthy
+up_in_healthy = infected_vs_healthy %>% 
+  filter(log2FC<0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  arrange(adj.pvalue) %>% 
+  pull(gene_name)
+
+n_healthy_proteins = length(up_in_healthy)
+
+healthy_cytokines = string_db_results %>% 
+  filter(`#node1` %in% up_in_healthy) %>% 
+  group_by(node2) %>% 
+  summarise(n= n()) %>% 
+  mutate(condition = "healthy_present")
+
+
+background_healthy = bind_rows(background_cytokines,healthy_cytokines) %>% 
+  pivot_wider(names_from = condition, values_from = n) %>% 
+  mutate(healthy_present = replace_na(healthy_present,0),
+         background_absent = n_background_proteins- background_present,
+         healthy_absent = n_healthy_proteins - healthy_present)
+      
+# Making a contingency table 
+
+out = data.frame() 
+
+for(i in unique(background_healthy$node2)){
+  
+  contingency_table_present = background_healthy %>% 
+  filter(node2 == i) %>% 
+  select(healthy_present,background_present) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(present = V1)
+ 
+  
+  contingency_table_absent =background_healthy %>% 
+  filter(node2 == i) %>% 
+  select(healthy_absent,background_absent) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(absent = V1)
+  
+  contingency_table = bind_cols(contingency_table_present,contingency_table_absent) %>% 
+  as.matrix()
+  
+  stat = rstatix::fisher_test(contingency_table) %>% 
+    mutate(cytokine = i )
+  
+  out = rbind(stat,out)
+  
+}
+
+corrected_pvalues = out %>% 
+  rstatix::adjust_pvalue(method = "fdr")
+
+# Now calculating fold change 
+
+log2fc = background_healthy %>% 
+  select(node2,
+         background_present,
+         healthy_present) %>% 
+  mutate(n_background_proteins = n_background_proteins,
+         n_healthy_proteins = n_healthy_proteins,
+         proportion_healthy = healthy_present/n_healthy_proteins,
+         proportion_background = background_present/n_background_proteins,
+         log2fc = log2(proportion_healthy/proportion_background)) %>% 
+  select(node2,log2fc,proportion_in_condition = proportion_healthy,
+         proportion_in_background = proportion_background)
+  
+  
+# all metrics
+healthy_metrics = corrected_pvalues %>% 
+  inner_join(log2fc,by = c("cytokine" ="node2")) %>% 
+  mutate(enrichment_score = -log10(p.adj) * log2fc,
+         condition = "healthy")
+
+
+write_lines(up_in_healthy,"01_r_processed_data/cytokine_inference/healthy_protein_list")
+
+```
+
+#### Faecalis
+
+```{r}
+### Now lets try doing this in Facalis vs Faecium ### 
+faecalis_v_faecium = readr::read_csv("01_r_processed_data/faecalis_v_faecium.csv")
+
+# Name Mapping 
+annotations = read_csv("00_r_input_data/gene_uniprot_annotations.csv") 
+#changing the names to uniprotid
+faecalis_v_faecium = left_join(faecalis_v_faecium,annotations,by = c("uniprotid"))
+
+# up in faecalis
+up_in_faecalis = faecalis_v_faecium %>% 
+  filter(log2FC>0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  arrange(adj.pvalue) %>% 
+  pull(gene_name)
+
+n_faecalis_proteins = length(up_in_faecalis)
+
+faecalis_cytokines = string_db_results %>% 
+  filter(`#node1` %in% up_in_faecalis) %>% 
+  group_by(node2) %>% 
+  summarise(n= n()) %>% 
+  mutate(condition = "faecalis_present")
+
+
+background_faecalis = bind_rows(background_cytokines,faecalis_cytokines) %>% 
+  pivot_wider(names_from = condition, values_from = n) %>% 
+  mutate(faecalis_present = replace_na(faecalis_present,0),
+         background_absent = n_background_proteins- background_present,
+         faecalis_absent = n_faecalis_proteins - faecalis_present)
+      
+# Making a contingency table 
+
+out = data.frame() 
+
+for(i in unique(background_faecalis$node2)){
+  
+  contingency_table_present = background_faecalis %>% 
+  filter(node2 == i) %>% 
+  select(faecalis_present,background_present) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(present = V1)
+ 
+  
+  contingency_table_absent = background_faecalis %>% 
+  filter(node2 == i) %>% 
+  select(faecalis_absent,background_absent) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(absent = V1)
+  
+  contingency_table = bind_cols(contingency_table_present,contingency_table_absent) %>% 
+  as.matrix()
+  
+  stat = rstatix::fisher_test(contingency_table) %>% 
+    mutate(cytokine = i )
+  
+  out = rbind(stat,out)
+  
+}
+
+corrected_pvalues = out %>% 
+  rstatix::adjust_pvalue(method = "fdr")
+
+# Now calculating fold change 
+
+log2fc = background_faecalis %>% 
+  select(node2,
+         background_present,
+         faecalis_present) %>% 
+  mutate(n_background_proteins = n_background_proteins,
+         n_faecalis_proteins = n_faecalis_proteins,
+         proportion_faecalis = faecalis_present/n_faecalis_proteins,
+         proportion_background = background_present/n_background_proteins,
+         log2fc = log2(proportion_faecalis/proportion_background)) %>% 
+  select(node2,log2fc,proportion_in_condition = proportion_faecalis,
+         proportion_in_background = proportion_background)
+  
+  
+# all metrics
+faecalis_metrics = corrected_pvalues %>% 
+  inner_join(log2fc,by = c("cytokine" ="node2")) %>% 
+  mutate(enrichment_score = -log10(p.adj) * log2fc,
+         condition = "faecalis")
+
+
+write_lines(up_in_faecalis,"01_r_processed_data/cytokine_inference/faecalis_protein_list")
+
+
+```
+
+#### Faecium
+
+```{r}
+### Now lets try doing this in Facalis vs Faecium ### 
+faecalis_v_faecium = readr::read_csv("01_r_processed_data/faecalis_v_faecium.csv")
+
+# Name Mapping 
+annotations = read_csv("00_r_input_data/gene_uniprot_annotations.csv") 
+#changing the names to uniprotid
+faecalis_v_faecium = left_join(faecalis_v_faecium,annotations,by = c("uniprotid"))
+
+# up in faceium 
+up_in_faecium = faecalis_v_faecium %>% 
+  filter(log2FC<0) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  arrange(adj.pvalue) %>% 
+  pull(gene_name)
+
+n_faecium_proteins = length(up_in_faecium)
+
+faecium_cytokines = string_db_results %>% 
+  filter(`#node1` %in% up_in_faecium) %>% 
+  group_by(node2) %>% 
+  summarise(n= n()) %>% 
+  mutate(condition = "faecium_present")
+
+
+background_faecium = bind_rows(background_cytokines,faecium_cytokines) %>% 
+  pivot_wider(names_from = condition, values_from = n) %>% 
+  mutate(faecium_present = replace_na(faecium_present,0),
+         background_absent = n_background_proteins- background_present,
+         faecium_absent = n_faecium_proteins - faecium_present)
+      
+# Making a contingency table 
+
+out = data.frame() 
+
+for(i in unique(background_faecalis$node2)){
+  
+  contingency_table_present = background_faecium %>% 
+  filter(node2 == i) %>% 
+  select(faecium_present,background_present) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(present = V1)
+ 
+  
+  contingency_table_absent = background_faecium %>% 
+  filter(node2 == i) %>% 
+  select(faecium_absent,background_absent) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  rename(absent = V1)
+  
+  contingency_table = bind_cols(contingency_table_present,contingency_table_absent) %>% 
+  as.matrix()
+  
+  stat = rstatix::fisher_test(contingency_table) %>% 
+    mutate(cytokine = i )
+  
+  out = rbind(stat,out)
+  
+}
+
+corrected_pvalues = out %>% 
+  rstatix::adjust_pvalue(method = "fdr")
+
+# Now calculating fold change 
+
+log2fc = background_faecium %>% 
+  select(node2,
+         background_present,
+         faecium_present) %>% 
+  mutate(n_background_proteins = n_background_proteins,
+         n_faecium_proteins = n_faecium_proteins,
+         proportion_faecium= faecium_present/n_faecium_proteins,
+         proportion_background = background_present/n_background_proteins,
+         log2fc = log2(proportion_faecium/proportion_background)) %>% 
+  select(node2,log2fc,proportion_in_condition = proportion_faecium,
+         proportion_in_background = proportion_background)
+  
+  
+# all metrics
+faecium_metrics = corrected_pvalues %>% 
+  inner_join(log2fc,by = c("cytokine" ="node2")) %>% 
+  mutate(enrichment_score = -log10(p.adj) * log2fc,
+         condition = "faecium")
+
+write_lines(up_in_faecium,"01_r_processed_data/cytokine_inference/faecium_protein_list")
+```
+
+### D - Plot of stats
+
+```{r,fig.height = 12, fig.width = 5}
+all_metrics = dplyr::bind_rows(infected_metrics,healthy_metrics,faecalis_metrics,faecium_metrics) %>% 
+  mutate(direction_of_change = case_when(log2fc > 0 ~ "increased",
+                                         TRUE ~ "decreased"),
+         )
+
+
+all_metrics$condition = factor(all_metrics$condition, levels=c("infected","healthy","faecalis","faecium"))
+
+
+s8d = all_metrics %>% 
+  ggplot(aes(reorder(cytokine, -p.adj),p.adj,color = condition,size = direction_of_change))+
+  geom_point()+
+  coord_flip()+
+  geom_hline(yintercept = 0.05,linetype = "dashed",color = "red")+
+  theme(legend.position = "bottom",axis.text.x = element_text(angle = 90))+
+  xlab("Cytokine")+
+  scale_colour_manual(values = c("#FFA500","#FDE725FF","#440154FF","#2A788EFF"))
+
+s8d
+
+
+ggsave("03_supplemental/s8_cytokine_inference/s8d.pdf",plot = s8d,width = 5,height = 12,units = "in")
+```
+
+### E - Network of infected
+
+Figure plotted via cytoscape.
+
+```{r}
+# Since we have 
+cytokines_in_infected_network = infected_metrics %>% 
+  filter(p < 0.05) %>% 
+  pull(cytokine)
+
+#writing a file so we can look at the network further. 
+infected_cytokine_network = string_db_results %>% 
+  filter(node2 %in% cytokines_in_infected_network,
+         `#node1` %in% up_in_infected)
+
+write_csv(infected_cytokine_network,"01_r_processed_data/cytokine_inference/03_infected_protein_cytokine_network_filtered.csv")
+```
+
+## S9 - Prediction of Clinical Outcome by Nanopore Sequencing
+
+### A - Sequencing Data from Strains of faecalis, colored by clinical outcome
+
+```{r,fig.height = 8, fig.width = 12}
+## Loading in all the data ### 
+md = read_csv("00_r_input_data/clinical_metadata.csv")
+gene_data = read_csv("00_r_input_data/gene_presence_absence_long.csv")
+
+
+## Combining data and metadata ## 
+gene_combined = inner_join(md,gene_data,by = "sample_id")
+
+
+# Formating ##
+faecalis = gene_combined %>% 
+  filter(condition == "faecalis") %>% 
+  filter(!is.na(death_during_admission)) %>% 
+  select(sample_id,death_during_admission,Gene,value) %>% 
+  pivot_wider(names_from = Gene,values_from = value)
+ 
+## Getting into a format where we can do the clustering ## 
+faecalis_data = faecalis[,3:28290] %>% 
+   #Remove columns that only contain 0s 
+  select_if(colSums(.) != 0) %>% 
+  as.data.frame()
+
+## Fixing the row names so they match for the heatmap ##
+rownames(faecalis_data) = faecalis$sample_id
+
+faecalis_annotation = faecalis[,2] %>% 
+  as.data.frame()
+
+rownames(faecalis_annotation) = faecalis$sample_id
+
+## Generating a dendrogram without a heatmap ##
+library(dendextend)
+
+d = dist(faecalis_data,method = "binary")
+
+dend = as.dendrogram(hclust(d, method = "ward.D2"))
+
+# let's add some color: Red = dead, black = okay
+colors_to_use = c("#000000","#FF0000")[as.numeric(as.factor(faecalis_annotation$death_during_admission))]
+
+#getting in the same order as dendrogram
+colors_to_use = colors_to_use[order.dendrogram(dend)]
+
+# Now we can color the brancehes
+dend = branches_color(dend,col = colors_to_use,) %>% 
+  set("branches_lwd", 8)
+
+
+library(pheatmap)
+## Generating a dendogram with a heatmap ##
+faecalis_annotation = faecalis_annotation %>% 
+  mutate(death_during_admission = as.character(death_during_admission)) %>% 
+  select(mortality = death_during_admission)
+
+#plotting with a heatmap
+p = pheatmap(faecalis_data,
+         clustering_distance_rows = "binary",
+         clustering_method = "ward.D2",
+         annotation_row = faecalis_annotation,
+         labels_col=rep("",ncol(faecalis_data)))
+
+save_pheatmap_pdf <- function(x, filename, width=12, height=8) {
+  pdf(filename, width = width, height = height)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+save_pheatmap_png <- function(x, filename, width=12, height=8,res = 150) {
+  png(filename, width = width, height = height,res = 150,units = "in")
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
+  dev.off()
+}
+
+
+#Have trouble manipulating the pdf in inkscape
+save_pheatmap_pdf(p,"03_supplemental/s9_sequencing_based_prediction_of_clinical_outcome/s9a.pdf")
+save_pheatmap_png(p,"03_supplemental/s9_sequencing_based_prediction_of_clinical_outcome/s9a.png")
+
+
+
+```
+
+### B - Sequencing Data from Faecium strains, colored by clinical outcome
+
+```{r,fig.height = 8, fig.width = 12}
+## Processing the data to only contain the faecium isolates ###
+faecium = gene_combined %>% 
+  filter(condition == "faecium") %>% 
+  filter(!is.na(death_during_admission)) %>% 
+  select(sample_id,death_during_admission,Gene,value) %>% 
+  pivot_wider(names_from = Gene,values_from = value) %>% 
+  # Removing weird sample that was found to be E.coli.
+  filter(sample_id != "S68") 
+
+# Processing to get rid of columns we dont need
+faecium_data = faecium[,3:28290] %>% 
+   #Remove columns that only contain 0s 
+  select_if(colSums(.) != 0) %>% 
+  as.data.frame()
+
+# Changing the row names so we can plot
+rownames(faecium_data) = faecium$sample_id
+
+# Extracting the annotations 
+faecium_annotation = faecium[,2] %>% 
+  as.data.frame() %>% 
+  mutate(death_during_admission = as.character(death_during_admission)) %>% 
+  select(mortality = death_during_admission)
+
+
+rownames(faecium_annotation) = faecium$sample_id
+
+p2 = pheatmap(faecium_data,
+         clustering_distance_rows = "binary",
+         clustering_method = "ward.D2",
+         annotation_row = faecium_annotation,
+         labels_col=rep("",ncol(faecium_data)))
+
+
+save_pheatmap_pdf(p2,"03_supplemental/s9_sequencing_based_prediction_of_clinical_outcome/s9b.pdf")
+save_pheatmap_png(p2,"03_supplemental/s9_sequencing_based_prediction_of_clinical_outcome/s9b.png")
+```
+
+## S10 - Checking Confounding Variables
+
+
+### Faecalis vs Faecium
+
+#### A- IG abundances between patients with no transplant
+
+```{r}
+md = read_csv("00_r_input_data/clinical_metadata.csv") 
+
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+anot = read_csv("00_r_input_data/all_protein_annotations.csv")
+
+sum_annotated = left_join(protein_sum,anot,by = c("uniprotid" = "Entry")) %>% 
+  left_join(md,by = c("BioReplicate" = "sample_id")) %>% 
+  filter(transplant_type == "none") %>% 
+#Removing one problematic immunglobulin. Negative values for 3 of the samples messed things up. 
+  #Doesn't change the story, just the plot. 
+  filter(uniprotid != "A0A0B4J2B5")
+
+
+
+ig = sum_annotated %>% 
+  filter(grepl(".*Immunoglobulin.*",Protein.names)) %>% 
+  filter(!grepl(".*receptor.*",Protein.names))
+
+
+stat = ig %>% 
+  rstatix::t_test(Abundance ~ Condition) %>% 
+  rstatix::add_significance()
+
+s10a = ig %>% 
+  ggplot(aes(Condition,Abundance))+
+  geom_violin()+
+  geom_boxplot()+
+  ggpubr::stat_pvalue_manual(stat,
+                             y.position = 22,
+                             step.increase = 0.1)+
+  theme_classic()
+
+s10a
+
+ggsave("03_supplemental/s10_checking_confounding_variables/s10a.pdf",s10a)
+```
+
+
+
+#### B- Between Smoking and Non Smoking
+
+```{r}
+
+smoking_associated = c("APOC3","IGHV3-7","IGLV1-47","RBP4")
+md = read_csv("00_r_input_data/clinical_metadata.csv") 
+
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+anot = read_csv("00_r_input_data/all_protein_annotations.csv")
+
+sum_annotated = left_join(protein_sum,anot,by = c("uniprotid" = "Entry")) %>% 
+  left_join(md,by = c("BioReplicate" = "sample_id")) %>% 
+  filter(Gene %in% smoking_associated,
+         condition != "healthy",
+         smoking == FALSE)
+
+
+
+plotlist = list()
+
+for(i in smoking_associated){
+  
+  f = filter(sum_annotated,Gene %in% i)
+  
+stat = f %>% 
+  rstatix::t_test(Abundance ~ condition) %>% 
+  rstatix::add_significance() %>% 
+  rstatix::add_xy_position()
+
+
+p1 = ggplot(f,aes(condition,Abundance)) + 
+  geom_violin()+
+  geom_point()+
+  ggtitle(i)+
+  ggpubr::stat_pvalue_manual(stat)
+
+
+plotlist[[i]] = p1
+
+}
+  
+
+library(gridExtra)
+
+s10b = do.call("grid.arrange", plotlist)
+
+
+ggsave("03_supplemental/s10_checking_confounding_variables/s10b.pdf",s10b)
+```
+
+
+
+# Getting exact numbers for manuscript writing
+
+## How many of each patient type do we have?
+
+```{r}
+md = readr::read_csv("00_r_input_data/clinical_metadata.csv") %>% 
+  group_by(condition) %>% 
+  summarise(n = n())
+
+md
+
+
+md2 = readr::read_csv("00_r_input_data/clinical_metadata.csv") %>% 
+  group_by(death_during_admission) %>% 
+  summarise(n = n())
+
+md2
+```
+
+## How many proteins did we identify?
+
+```{r}
+p = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv") %>% 
+  group_by(uniprotid) %>% 
+  summarise(n = n())
+```
+
+## How many proteins did we identify in all samples
+
+```{r}
+p = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv") %>% 
+  group_by(uniprotid) %>% 
+  summarise(n = n())
+
+sum(p$n == 105)
+```
+
+## How many metabolites were differentially abundant between healthy and infected?
+
+```{r}
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv",na = c("N/A","NA"))
+## Reading in the normalized metabolomics data ##
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+
+# Performing statistics so we can make a volcano plot
+  stat = normalized_data %>%
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ infection_status) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+
+
+# Extracting the values for each feature for healthy patients
+healthy = normalized_data %>% 
+  filter(infection_status == "uninfected") %>% 
+  group_by(row_id) %>% 
+  summarise(healthy = mean(norm_value))
+
+
+# Extracting the values for each feature for infected patients
+infected = normalized_data %>% 
+  filter(infection_status == "infected") %>% 
+  group_by(row_id) %>% 
+  summarise(infected = mean(norm_value))
+
+
+## Combining the healthy and infected so we can caclulated the log2fc ##
+log2fc = inner_join(healthy,infected,by = "row_id") %>% 
+  mutate(log2fc_infected_healthy = log2(infected/healthy))
+  
+
+## Joining the statistics and log2 fold change ##  
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE),
+         direction = case_when(log2fc_infected_healthy > 0 ~ "up",
+                   TRUE ~ "down"))
+  
+sum = vp %>% 
+  filter(p.adj_fdr < 0.05) %>% 
+  group_by(direction) %>% 
+  summarise(n = n())
+
+sum
+```
+
+## How many proteins
+
+```{r}
+faecalis_v_faecium = readr::read_csv("01_r_processed_data/faecalis_v_faecium.csv") %>% 
+  left_join(protein_to_gene,by = c("uniprotid" = "ProteinID")) %>% 
+  mutate(direction = case_when(log2FC > 0 ~ "up",
+                   TRUE ~ "down")) %>% 
+  filter(adj.pvalue < 0.05) %>% 
+  group_by(direction) %>% 
+  summarise(n = n())
+
+faecalis_v_faecium
+```
+
+## How unbalanced are the faecium vs faecalis group in terms of metadata?
+
+```{r}
+md = read_csv("00_r_input_data/clinical_metadata.csv") %>% 
+  filter(pathogen != "healthy")
+
+
+sum = md %>% 
+  group_by(pathogen,smoking) %>% 
+  summarise(n = n())
+
+sum
+
+
+sum2 = md %>% 
+  group_by(pathogen,transplant_type) %>% 
+  summarise(n = n())
+
+sum
+```
+
+## Number of proteins different betweeen metabolomics - faecalis faecium
+
+```{r}
+
+## Reading in Data
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+# Performing statistics so we can make a volcano plot
+  stat = normalized_data %>%
+    filter(condition %in% c("faecalis","faecium")) %>% 
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ condition) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+
+# Calculating log2fc
+log2fc_data = normalized_data %>%  
+    dplyr::select(metabolomics_id,row_id,condition,norm_value) 
+
+
+# Extracting just the faecalis data
+faecalis = log2fc_data %>% 
+  filter(condition == "faecalis") %>% 
+  group_by(row_id) %>% 
+  summarise(faecalis = mean(norm_value))
+
+# Extracting just the faecium data 
+faecium = log2fc_data %>% 
+  filter(condition == "faecium") %>% 
+  group_by(row_id) %>% 
+  summarise(faecium = mean(norm_value))
+
+# Calculating log2fc
+log2fc = inner_join(faecalis,faecium,by = "row_id") %>% 
+  mutate(log2fc_faecalis_faecium = log2(faecalis/faecium))
+  
+# Combining log2fc and statistics 
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE),
+         direction = case_when(log2fc_faecalis_faecium > 0 ~ "positive",
+           TRUE ~ "negative"
+         ))
+
+
+sum = vp %>% 
+  filter(p.adj_fdr <= 0.05) %>% 
+  group_by(direction) %>% 
+  summarise(n = n())
+  
+  
+sum
+```
+
+## Number of proteins differentally abundant in mortality vs survival
+
+```{r}
+sum = read_csv("01_r_processed_data/death_vs_life.csv") %>% 
+  filter(is.na(issue)) %>% 
+  mutate(direction = case_when(log2FC > 0 ~ "up",
+                               TRUE ~ "down")) %>% 
+  filter(adj.pvalue <= 0.05) %>% 
+  group_by(direction) %>% 
+  summarise(n = n())
+
+sum
+```
+
+## Number of metabolites differentially abundant in mortality vs survival
+
+```{r}
+## Reading in Data
+normalized_data = read_csv("01_r_processed_data/normalized_metabolomics.csv") %>% 
+  filter(!is.na(death_during_admission))
+
+# Performing statistics so we can make a volcano plot
+  stat = normalized_data %>% 
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ death_during_admission) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+
+# Calculating log2fc
+log2fc_data = normalized_data %>%  
+    dplyr::select(metabolomics_id,row_id,death_during_admission,norm_value) 
+
+
+# Extracting just the faecalis data
+dead = log2fc_data %>% 
+  filter(death_during_admission == TRUE) %>% 
+  group_by(row_id) %>% 
+  summarise(dead = mean(norm_value))
+
+# Extracting just the faecium data 
+live = log2fc_data %>% 
+  filter(death_during_admission == FALSE) %>% 
+  group_by(row_id) %>% 
+  summarise(live = mean(norm_value))
+
+# Calculating log2fc
+log2fc = inner_join(dead,live,by = "row_id") %>% 
+  mutate(log2fc_live_dead = log2(live/dead))
+  
+# Combining log2fc and statistics 
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE)) %>% 
+    mutate(direction = case_when(log2fc_live_dead > 0 ~ "up",
+                               TRUE ~ "down")) %>% 
+  filter(p.adj_fdr <= 0.05)
+
+sum = vp %>% 
+  group_by(direction) %>% 
+  summarise(n = n())
+
+sum
+
+```
+
+# Stuff I might end up needing
+
+## PTM analysis of proteomics data via open search.
+
+```{r,fig.height = 10, fig.width = 10}
+open_search_results = read_tsv("00_r_input_data/global.modsummary.tsv") %>% 
+  select(Modification, `Mass Shift`,!contains("percent")) %>% 
+  mutate(all_plexes_sum = (plex1_PSMs+plex2_PSMs+plex3_PSMs+plex4_PSMs+plex5_PSMs+plex6_PSMs+plex7_PSMs),
+    all_PSMs = sum(plex1_PSMs,plex2_PSMs,plex3_PSMs,plex4_PSMs,plex5_PSMs,plex6_PSMs,plex7_PSMs),
+    all_plexes_percent = all_plexes_sum/all_PSMs * 100,
+    mass_modification = paste0(`Mass Shift`,"-",Modification))
+
+
+open_1_percent = open_search_results %>% 
+  filter(all_plexes_percent >= 1) %>% 
+  #TMT pro
+  mutate(Modification = case_when(Modification == 	
+"Representative mass and accurate mass for 113, 114, 116 & 117" ~ "TMTpro",
+TRUE ~ Modification),
+Modification = case_when(!grepl(".*[1-9].*",Modification) ~ paste0(Modification,"-",round(`Mass Shift`, 2)),
+                         TRUE ~ Modification))
+
+
+p1 = open_1_percent %>% 
+  ggplot(aes(reorder(Modification,all_plexes_percent),all_plexes_percent))+
+  geom_col()+
+  coord_flip()+
+  ylab("Percent PSMs")+
+  xlab("Putative Identification")
+
+p1  
+```
+
+
+## Combined Proteomics and Metabolomics clustering of mortality.
+
+```{r,fig.height = 10, fig.width = 12,eval = FALSE}
+##Proteomics data ##
+pl = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv") %>% 
+  select(tmt_id = sample_id,everything())
+
+## Clinical metadata ##
+map = readxl::read_excel("00_r_input_data/proteomics_sample_mapping.xlsx") %>% 
+  mutate(tmt_id = paste0("plex",plex_number,".",TMT_channel)) %>% 
+  select(tmt_id,sample_id = sample_name)
+
+md = read_csv("00_r_input_data/clinical_metadata.csv") 
+
+md_final = inner_join(map,md,by = "sample_id")
+
+clean_clinical = inner_join(pl,md_final, by = "tmt_id")
+
+
+
+clean_clinical_wide = clean_clinical %>% 
+  select(sample_id,death_during_admission,Gene,Abundance) %>% 
+ tidyr::pivot_wider(names_from = Gene,
+              values_from = Abundance) %>% 
+  #filter(sample_id.y != "S49",
+         #sample_id.y != "S76") %>% 
+  dplyr::select_if(~ !any(is.na(.))) %>% 
+  #needs to be a dataframe or EFS freaks out. 
+  as.data.frame()
+
+## Metabolomics data
+## Reading in the normalized data ## 
+normalized_data = read_csv("01_r_processed_data//normalized_metabolomics.csv")
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+
+## Switching to the wide format ### 
+norm_wide = normalized_data %>%
+  select(-row_m_z,-row_retention_time,-value) %>% 
+  tidyr::pivot_wider(names_from = row_id,values_from = norm_value)
+
+## Looking for only columns that were annotated ## 
+gnps_and_in_norm = intersect(unique(gnps_annotations$row_id), colnames(norm_wide))
+
+gnps_annotated_metabolites = norm_wide %>% 
+  as.data.frame() %>% 
+  select(sample_id,death_during_admission,gnps_and_in_norm) %>% 
+  filter(!is.na(death_during_admission))
+
+### Combining all data ### 
+all= inner_join(clean_clinical_wide,gnps_annotated_metabolites,by = "sample_id")
+
+# Getting into a format where we can do the clustering ## 
+clust_data = all[,2:491] %>% 
+   #Remove columns that only contain 0s 
+  select_if(colSums(.) != 0) %>% 
+  as.data.frame()
+
+## Fixing the row names so they match for the heatmap ##
+rownames(clust_data) = clust_data$sample_id
+
+annotation = all[,2] %>% 
+  as.data.frame()
+
+## Generating a dendrogram without a heatmap ##
+library(dendextend)
+
+#scaling so that proteomics and metabolomics are in terms of same units
+scaled = scale(clust_data)
+d = dist(scaled)
+
+dend = as.dendrogram(hclust(d, method = "ward.D2"))
+
+
+
+# let's add some color: Red = dead, black = okay
+colors_to_use = c("#000000","#FF0000")[as.numeric(as.factor(all$death_during_admission))]
+
+#getting in the same order as dendrogram
+colors_to_use = colors_to_use[order.dendrogram(dend)]
+
+# Now we can color the brancehes
+dend = branches_color(dend,col = colors_to_use,) %>% 
+  set("branches_lwd", 8)
+
+plot(dend)
+
+dend %>% rect.dendrogram(k=2, 
+                           border = 8, lty = 5, lwd = 2)
+
+
+
+
+xtab <- as.table(rbind(c(4, 8), c(13, 53)))
+dimnames(xtab) <- list(
+  group = c("k1", "k2"),
+  death = c("yes", "no")
+)
+
+fisher_test(xtab)
+```
+
+## Combined Proteomic and Metabolomic Model to predict Faecalis vs Faecium Bacteremia.
+
+## A - Description of model design.
+
+This figure was generated in Biorender.
+
+## B - Combined Model Performance.
+
+<https://www.tidymodels.org/start/case-study/>
+
+```{r,eval = FALSE}
+## Loading in all the data needed for the model ## 
+mapping = readxl::read_excel("../proteomics/sample_mapping.xlsx") %>% 
+  mutate(sample_id = paste0("plex",plex_number,".",TMT_channel)) %>% 
+  select(sample_id,sample_name)
+
+proteomics = read_csv("../Analysis/quant_msstats_protein_level_data.csv") %>% 
+  separate(Protein, c("orientation","uniprotid","locus"),sep ="\\|") %>% 
+  inner_join(protein_annotations,by = c("uniprotid" = "Entry")) %>% 
+  mutate(sample_id = paste0(Mixture,".",Channel)) %>% 
+  inner_join(mapping,by = "sample_id") %>% 
+  select(sample_name,uniprotid,Abundance) %>% 
+  pivot_wider(names_from = uniprotid,values_from = Abundance)
+
+gnps_annotations = read_csv("gnps_annotations.csv")
+
+metabolomics = read_csv("../Manuscript/normalized_metabolomics.csv") %>% 
+  select(sample_name = sample_id,condition,row_id,norm_value) %>% 
+  # Only looking at the metabolites that we were able to identify
+  #filter(row_id %in% gnps_annotations$row_id) %>% 
+  pivot_wider(names_from = row_id,values_from = norm_value)
+
+all = inner_join(proteomics,metabolomics,by= "sample_name") %>% 
+  select(sample_name,condition,everything()) %>% 
+  filter(condition %in% c("faecalis","faecium")) 
+
+write_csv(all, "all_features_for_lasso_regression.csv")
+
+```
+
+### All predictors
+
+```{r,eval=FALSE}
+### Reading in data for the regression ### 
+all = read_csv("all_features_for_lasso_regression.csv")
+
+## What values have less than 50% of the features?  
+missing_count = colSums(is.na(all)/nrow(all) * 100) 
+missing_g_50 = names(missing_count[missing_count>50])
+
+## Removing features missing > 50% of values ## 
+all_50_missing_removed = all %>% 
+  select(!contains(missing_g_50)) 
+
+# Setting seed to make steps relying on randomness reproducible
+set.seed(123)
+
+## Imputing values using missranger package ##
+library(missRanger)
+all_na_impute = missRanger(all_50_missing_removed)
+
+### Performing Lasso Regression ### 
+library(tidymodels)
+
+# Splitting the original dataset
+split = initial_split(all_na_impute, strata = condition)
+
+# Putting all data in the training set. Did this because we don't have enough samples for classic training/ validation set. 
+train = training(split)
+
+test = testing(split)
+
+## Defining the Cross Validation Folds ##
+folds = vfold_cv(train, v = 10)
+
+## Defining a recipe. ##
+recipe = recipe(condition ~ ., data = train) %>%
+  # Removing the ID column from consideration
+  update_role(sample_name, new_role = "ID") %>%
+  # Getting rid of all variables with zero variance (if they exist)
+  step_zv(all_numeric(), -all_outcomes()) %>%
+  # Normalizing data to work with the lasso regression. 
+  step_normalize(all_numeric(), -all_outcomes())
+
+# making sure strings are strings and not factors. 
+prep = recipe %>%
+  prep(strings_as_factors = FALSE)
+
+# Defining the lasso model. Here the penalty is a tuned feature. 
+# Mixture specifies we should use L1 regularization, which equates to lasso regression. 
+lasso_spec = logistic_reg(penalty = tune(), mixture = 1) %>%
+  set_engine("glmnet")
+
+# Making the recipe into a workflow. 
+wf = workflow() %>%
+  # Processes the data
+  add_recipe(recipe) %>% 
+  # Adds the model
+  add_model(lasso_spec)
+
+
+## Creating tuning grid ## 
+# 0.001 to 0.3 by steps of 0.01, as in Jacob's paper
+lr_reg_grid = tibble(penalty = seq(from = 0.001, to = 0.3, by = 0.01))
+
+
+## Tuning the model to find best penalty to use ##
+lr_res = wf %>% 
+  tune_grid(resample = folds,
+            grid = lr_reg_grid,
+            control = control_grid(save_pred = TRUE),
+            metrics = metric_set(roc_auc))
+
+
+## Looking at how the penalty affects the performance of the model ##
+lr_plot = lr_res %>% 
+  collect_metrics() %>% 
+  ggplot(aes(x = penalty, y = mean)) + 
+  geom_point() + 
+  geom_line() + 
+  ylab("Area under the ROC Curve") +
+  scale_x_log10(labels = scales::label_number())
+
+lr_plot 
+
+# Extracting the tuning parameter that worked the best #
+lr_best = lr_res %>% 
+  select_best("roc_auc")
+
+## Updating workflow to contain results from tuning ## 
+lr_auc = lr_res %>% 
+  collect_predictions(parameters = lr_best) %>% 
+  roc_curve(condition, .pred_faecalis) %>% 
+  mutate(model = "multi-omics")
+
+autoplot(lr_auc)
+
+
+##Doing this with test set ## 
+final_wf = wf %>% 
+  finalize_workflow(lr_best)
+
+final_fit <- 
+  final_wf %>%
+  last_fit(split) 
+
+# Evaluating on the test set 
+final_fit %>%
+  collect_predictions() %>% 
+  roc_curve(condition, .pred_faecalis) %>% 
+  autoplot()
+```
+
+### Just metabolomics
+
+```{r,eval = FALSE}
+### Performing Lasso Regression ### 
+library(tidymodels)
+
+
+metabolomics_all_na_impute = all_na_impute %>% 
+  select(starts_with("RID"))
+
+set.seed(2)
+# Splitting the original dataset
+split = initial_split(all_na_impute, strata = condition)
+#Putting all data as training for now
+train = training(split,prop = 1)
+
+# Cross validation folds
+folds = vfold_cv(train, v = 10)
+
+# Defining a recipe. 
+recipe = recipe(condition ~ ., data = train) %>%
+  update_role(sample_name, new_role = "ID") %>%
+  step_zv(all_numeric(), -all_outcomes()) %>%
+  step_normalize(all_numeric(), -all_outcomes())
+
+prep = recipe %>%
+  prep(strings_as_factors = FALSE)
+
+# Defining the lasso model. 
+lasso_spec = logistic_reg(penalty = tune(), mixture = 1) %>%
+  set_engine("glmnet")
+
+# Making the recipe into a workflow. 
+wf = workflow() %>%
+  add_recipe(recipe) %>% 
+  add_model(lasso_spec)
+
+
+# Training the model
+lasso_fit = wf %>%
+  fit(data = train)
+
+
+## Creating tuning grid ## 
+# 0.001 to 0.3 by steps of 0.01, as in Jacob's paper
+lr_reg_grid = tibble(penalty = seq(from = 0.001, to = 0.3, by = 0.01))
+
+
+## Getting the tuning result ##
+lr_res = wf %>% 
+  tune_grid(folds,
+            grid = lr_reg_grid,
+            control = control_grid(save_pred = TRUE),
+            metrics = metric_set(roc_auc))
+
+
+## Looking at how the penalty affects the performance of the model  ##
+lr_plot = lr_res %>% 
+  collect_metrics() %>% 
+  ggplot(aes(x = penalty, y = mean)) + 
+  geom_point() + 
+  geom_line() + 
+  ylab("Area under the ROC Curve") +
+  scale_x_log10(labels = scales::label_number())
+
+lr_plot 
+
+#Extracting the tuning parameter that worked the best
+lr_best = lr_res %>% 
+  show_best("roc_auc", n = 1)
+
+
+## Looking at the ROC Plot using lasso regression with all the predictors in the study ##
+lr_auc = lr_res %>% 
+  collect_predictions(parameters = lr_best) %>% 
+  roc_curve(condition, .pred_faecalis) %>% 
+  mutate(model = "Logistic Regression")
+
+autoplot(lr_auc)
+
+```
+
+## Combining all Models
+
+```{r,eval = FALSE}
+# Bringing in the model from everything 
+rf_auc = rf_res %>% 
+  collect_predictions(parameters = rf_best) %>% 
+  roc_curve(children, .pred_children) %>% 
+  mutate(model = "Random Forest")
+
+
+# Bringing in the model from just metabolomics
+
+
+
+# Bringing in the model from just proteomics
+
+
+# Combining and plotting all models.
+
+all_models = bind_rows(rf_auc, lr_auc) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, col = model)) + 
+  geom_path(lwd = 1.5, alpha = 0.8) +
+  geom_abline(lty = 3) + 
+  coord_equal() + 
+  scale_color_viridis_d(option = "plasma", end = .6)
+```
+
+## How many features did we detect as a whole?
+
+```{r,eval = FALSE}
+proteomics_count = read_tsv("../proteomics/fragpipe_output_fixed_labels/tmt-report/abundance_gene_MD.tsv") %>% 
+  nrow()
+
+
+conserved_all_samples_proteomics_count = read_tsv("../proteomics/fragpipe_output_fixed_labels/tmt-report/abundance_gene_MD.tsv") %>% 
+  select(6:length(.)) %>% 
+  na.omit() %>% 
+  nrow()
+
+
+metabolite_features_count = read_csv("../metabolomics/mzmine_output/features_quant.csv") %>% 
+  nrow()
+
+## finding out how many annotated features there are. 
+gnps_annotations = read_csv("gnps_annotations.csv") 
+
+
+gnps_annotations_n = nrow(gnps_annotations)
+
+## How many of these annotated features were found in every sample? 
+
+gnps_annotations_all = read_csv("unnormalized_metabolomics.csv") %>% 
+  filter(row_id %in% gnps_annotations$row_id) %>% 
+  filter(value > 0 ) %>% 
+  group_by(row_id) %>% 
+  summarise(n = n()) %>% 
+  filter(n == 105) %>% 
+  nrow()
+```
+
+```{r,eval = FALSE}
+#reading in the data
+pl = read_csv("../Analysis/quant_msstats_protein_level_data.csv")
+
+clean = pl %>% 
+  tidyr::separate(Protein, c("orientation","uniprotid","locus"),sep ="\\|") %>% 
+  dplyr::group_by(Mixture,uniprotid,Channel,Condition) %>% 
+  dplyr::summarise(sum = sum(Abundance))
+
+infected_healthy_l = clean %>% 
+  mutate(classlabels = case_when(Condition %in% c("Faecalis","Faecium") ~ 1,
+                                   TRUE ~ 0))
+
+
+infected_healthy_w = infected_healthy_l %>% 
+  pivot_wider(names_from = uniprotid,
+              values_from = sum) %>% 
+  mutate(sampleid = paste0(Mixture,".",Channel)) %>% 
+  ungroup() %>% 
+  dplyr::select(-Mixture,-Channel,-Condition,-sampleid) %>% 
+  select_if(~ !any(is.na(.))) %>% 
+  as.data.frame()
+
+#need to come up with some sort of way to combine all of the fractions and plexes
+# The problem is that na.omit filters everything out. 
+set.seed(2)
+
+ensemble_result = EFS::ensemble_fs(infected_healthy_w,1,cor_threshold = 0)
+
+long = ensemble_result %>% 
+  as.data.frame() %>% 
+  tibble::rownames_to_column("model") %>% 
+  pivot_longer(2:length(.))
+
+
+top = long %>% 
+  group_by(name) %>% 
+  dplyr::summarise(sum = sum(value)) %>% 
+  dplyr::arrange(-sum) %>% 
+  mutate(rank = dense_rank(desc(sum))) %>% 
+  select(rank,everything()) %>% 
+  filter(name %in% known_indicatiors_of_bacterial_infection)
+
+```
+
+```{r,eval = FALSE}
+protein_annotations = read_csv("../Analysis/all_protein_annotations.csv")
+
+protein_sum = read_csv("../Analysis/quant_msstats_protein_level_data.csv") %>% 
+   separate(Protein, c("orientation","uniprotid","locus"),sep ="\\|") %>% 
+   inner_join(protein_annotations,by = c("uniprotid" = "Entry")) %>% 
+  mutate(sample_id = paste0(Mixture,".",Channel))
+
+
+topn = top %>% 
+  pull(name)
+
+ROC_data = dplyr::filter(protein_sum,uniprotid %in% topn) %>% 
+  dplyr::mutate(Condition = case_when(Condition %in% c("Faecalis","Faecium") ~ "infected",
+                                      TRUE ~ Condition)) 
+
+make_roc = function(ROC_data){
+  
+  list = list()
+  
+    for(i in topn){
+    
+      data = filter(ROC_data, uniprotid == i)
+  
+        mod = glm(as.factor(Condition) ~ Abundance, 
+            data = data,
+            family = "binomial") 
+  
+      predicted <- predict(mod ,family = "binomial", data, type="response")
+  
+      #define object to plot
+      rocobj <- pROC::roc(data$Condition, predicted)
+      
+      auc = round(as.numeric(gsub(".*: ", "",rocobj$auc)),2)
+#create ROC plot
+p1 = pROC::ggroc(rocobj)+
+  ggtitle(paste0(i," AUC: ",auc))
+  
+
+list[[i]] = p1
+    }
+  return(list)
+  }
+
+
+
+l = make_roc(ROC_data)
+
+
+f2e = do.call(ggarrange,l)
+
+f2e
+```
+
+## Average missingness for lasso regression
+
+Note that we got rid of all the missing data for the metabolomics data as part of the normalization used.
+
+```{r,eval = FALSE}
+# All combined. 
+all = read_csv("all_features_for_lasso_regression.csv") %>% 
+  select(3:length(.))
+
+mean(colSums(is.na(all))/nrow(all) * 100)
+
+
+# Looking at just metabolomics.
+
+metabolomics = all %>% 
+  select(dplyr::starts_with("RID"))
+
+# Sum of na/ total rows * 100 = percent NA.
+mean(colSums(is.na(metabolomics))/nrow(metabolomics) * 100)
+
+
+# Just proteomics. 
+
+proteomics = all %>% 
+  select(!dplyr::starts_with("RID"))
+
+# Sum of na/ total rows * 100 = percent NA.
+mean(colSums(is.na(proteomics))/nrow(proteomics) * 100)
+
+```
+
+## Annotating Proteins
+
+```{r,eval = FALSE}
+annotations = read_delim("../proteomics/fragpipe_output_fixed_labels/tmt-report/abundance_gene_MD.tsv") %>% 
+  select(gene_name = Index,uniprotid = ProteinID)
+
+write_csv(annotations,"gene_uniprot_annotations.csv")
+
+```
+
+PTM Analysis - GNPS
+
+```{r,fig.height = 10, fig.width = 30}
+## Reading in the PTM data from GNPS ## 
+ptm_data = read_delim("../metabolomics/ProteoSAFe-METABOLOMICS-SNETS-V2-3e73be4d-view_edges_delta_histogram/networkedges_selfloop/ae6d9d27f8684ad39b8e73b2d6f3da2e..selfloop",na = " ") %>% 
+  mutate(DeltaMZ = abs(DeltaMZ)) 
+
+
+  # filtering to only include the data in group
+  data_f = ptm_data %>% 
+    filter(#DeltaMZ >= min & DeltaMZ <= max,
+           DeltaMZ > 0)
+  
+  # Extracting the annotations from ptm data 
+  annotations = data_f %>% 
+    group_by(EdgeAnnotation) %>% 
+    summarise(mean = mean(DeltaMZ), n = n()) %>% 
+    filter(n >= 10,
+           !is.na(EdgeAnnotation))
+  
+  
+  max_annotation_value = annotations %>% 
+    pull(mean) %>% 
+    max()
+
+  # plotting 
+  p1 = data_f %>% 
+    filter(DeltaMZ <= max_annotation_value + 20) %>% 
+    #filter(group == group) %>% 
+     ggplot(aes(DeltaMZ))+
+    geom_histogram(binwidth = 1)+
+    ggrepel::geom_text_repel(data = annotations, aes(x = mean, y = 1000,label = EdgeAnnotation, angle = 90),max.overlaps = 1000)
+  
+  
+  p1
+
+  
+```
+
+GNPS table
+
+```{r}
+arranged_annotations = dplyr::arrange(annotations,-n)
+
+DT::datatable(arranged_annotations)
+
+#Making a plot of the table
+pdf("annotations.pdf",height = 4, width = 4)
+gridExtra::grid.table(arranged_annotations)
+dev.off()
+```
+
+```{r}
+#total number of MS2 scans
+ms2_scans = read_delim("../proteomics/gnps/clusterinfo/93fdf96f02e44389b503c53353712f6a.clusterinfo") %>% 
+  group_by(`#Filename`) %>% 
+  summarise(n = n())
+
+
+27017 + 16665
+```
