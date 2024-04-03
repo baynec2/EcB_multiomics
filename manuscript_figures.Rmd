@@ -244,7 +244,6 @@ circlize_dendrogram(dend %>% color_branches(k = 2),
                     labels_track_height = NA,
                     dend_track_height = 0.5,
                     labels = TRUE) 
-stats 
 ```
 
 ## D- Overall clustering of meatabolomics data.
@@ -396,7 +395,11 @@ write_csv(faecalis_v_faecium,"01_r_processed_data/faecalis_v_faecium.csv")
 ### How many are differentially abundant?
 
 ```{r}
-infected_vs_healthy_plot %>% 
+infected_vs_healthy = readr::read_csv("01_r_processed_data/Infected_vs_Healthy.csv") %>% 
+  left_join(protein_to_gene,by = c("uniprotid"= "ProteinID"))
+
+
+infected_vs_healthy %>% 
   mutate(sign = case_when(log2FC < 0 ~ "negative",
                           TRUE ~ "positive")) %>% 
   filter(adj.pvalue <= 0.05) %>% 
@@ -426,39 +429,6 @@ faecium_sig = healthy_v_faecium %>%
   filter(adj.pvalue <= 0.05) %>% 
   pull(uniprotid) 
 
-library(VennDiagram)
-
-venn.diagram(
-        x = list(both_sig, faecalis_sig, faecium_sig),
-        category.names = c("E.facalis + E.faecium" , "E.faecalis " , "E.faecium"),
-        filename = "../Manuscript/02_figures/f2_infection_v_healthy_proteomics/f2a-venn_diagram.svg",
-        output=TRUE,
-        
-        # Output features
-        imagetype="svg" ,
-        height = 5 , 
-        width = 5 , 
-        units = "in",
-        
-        # Circles
-        lwd = 2,
-        lty = 'blank',
-        fill = myCol,
-        
-        # Numbers
-        cex = .6,
-        fontface = "bold",
-        fontfamily = "sans",
-        
-        # Set names
-        cat.cex = 0.6,
-        cat.fontface = "bold",
-        cat.default.pos = "outer",
-        cat.pos = c(-27, 27, 135),
-        cat.dist = c(0.055, 0.055, 0.085),
-        cat.fontfamily = "sans",
-        rotation = 1
-)
 
 ```
 
@@ -992,6 +962,8 @@ ggsave("02_figures/f2_infection_v_healthy_proteomics/f2b.pdf",height = 10, width
 
 ```{r,fig.height = 5, fig.width = 10}
 
+source("functions.R")
+
 # Extracting the proteins with the term platelet alphaa granule lumen from staph enrichment results
 staph_enrich_platelet = staph_down_enrich@result %>% 
   filter(Description == "platelet alpha granule lumen") 
@@ -1266,7 +1238,7 @@ filtered = long %>%
 # 
 # f2d
 
-ggsave("02_figures/f2_infection_v_healthy_proteomics/f2d.pdf",f2d,height = 8, width = 8)
+#ggsave("02_figures/f2_infection_v_healthy_proteomics/f2d.pdf",f2d,height = 8, width = 8)
 
 # Writting to file to use in supplementary figures. 
 topn_proteomics = tibble(Gene = topn)

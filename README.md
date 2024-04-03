@@ -11,7 +11,7 @@ The directory structure is as follows:
 * 01_r_processed_data = data that was processed in R by me. Includes normalization, combining data and metadata, etc. Processing was performed in manuscript_figures.rmd.   
 * 02_figures = .pdf figures for main text of manuscript as output by manuscript_figures.rmd. Post processing/ assembly performed in inkscape in the .svg file.  
 * 03_supplemental = .pdf figures for the supplemental as output by manuscript_figures.rmd. Post processing/ assembly into performed in inkscape in the .svg file.   
-* 04_shiny_app = code to build the R shiny companion web app hosted at: https://charliebayne.shinyapps.io/EcB_Multiomics/
+* 04_shiny_app = code to build the R shiny companion web app hosted at: https://gonzalezlab.shinyapps.io/EcB_multiomics/
 * 05_cheatsheets = cheatsheets containing info about the genes/metabolites/GO terms. I manually compiled this and found it useful when writing the manuscript.    
 * 06_manuscript_edits = edits to the manuscript after co-authors took a look.   
 * 07_final_manuscript = The final product!   

@@ -1,0 +1,15 @@
+INFO  [2024-04-01 14:47:22] ** MSstatsTMT - proteinSummarization function
+INFO  [2024-04-01 14:47:22] Selected options:
+Method for protein summarization : msstats
+Constant median normalization between channels : TRUE
+Reference-channel based normalization between MS runs : TRUE
+Remove 'Norm' channels before inference: TRUE
+Remove 'Empty' channels before inference: TRUE
+INFO  [2024-04-01 14:47:22] Summarizing for Run : plex4_1 ( 1  of  7 )
+INFO  [2024-04-01 14:47:37] Summarizing for Run : plex2_1 ( 2  of  7 )
+INFO  [2024-04-01 14:47:56] Summarizing for Run : plex6_1 ( 3  of  7 )
+INFO  [2024-04-01 14:48:07] Summarizing for Run : plex7_1 ( 4  of  7 )
+INFO  [2024-04-01 14:48:17] Summarizing for Run : plex3_1 ( 5  of  7 )
+INFO  [2024-04-01 14:48:33] Summarizing for Run : plex5_1 ( 6  of  7 )
+INFO  [2024-04-01 14:48:45] Summarizing for Run : plex1_1 ( 7  of  7 )
+INFO  [2024-04-01 14:49:05] ** Protein-level summarization done by MSstats.

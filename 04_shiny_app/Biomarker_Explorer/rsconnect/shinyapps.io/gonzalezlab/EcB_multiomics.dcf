@@ -1,0 +1,13 @@
+name: EcB_multiomics
+title: EcB_multiomics
+username: gonzalezlab
+account: gonzalezlab
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 11645268
+bundleId: 8446359
+url: https://gonzalezlab.shinyapps.io/EcB_multiomics/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: ._.DS_Store|Infected_vs_Healthy.csv|Rplot001.jpeg|Rplot002.jpeg|Rplot003.jpeg|Rplot004.jpeg|Rplots.pdf
