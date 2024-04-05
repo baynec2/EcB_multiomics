@@ -8,3 +8,6 @@ dendextend
 gridExtra
 ggVennDiagram
 EFS
+rstatix
+ggpubr
+pheatmap

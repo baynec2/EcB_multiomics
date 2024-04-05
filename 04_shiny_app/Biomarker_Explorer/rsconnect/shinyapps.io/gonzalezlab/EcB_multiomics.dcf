@@ -5,7 +5,7 @@ account: gonzalezlab
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 11645268
-bundleId: 8446359
+bundleId: 8455614
 url: https://gonzalezlab.shinyapps.io/EcB_multiomics/
 version: 1
 asMultiple: FALSE

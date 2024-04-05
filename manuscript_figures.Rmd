@@ -1945,6 +1945,128 @@ f4d = ggpubr::ggarrange(f4d,f4e,nrow = 2)
 ggsave("02_figures/f4_faecalis_v_faecium_proteomics/f4d.pdf",f4d,height=8,width=8)
 ```
 
+## ? Are proteins involved in the gene ontology results confounded?
+
+```{r,fig.height = 8, fig.width = 8}
+# Extracting the GO terms in 
+enriched_in_faecium = enrich@result %>% 
+  filter(p.adjust <= 0.05) 
+
+#Looking at the proteins in the cholesterol portions of the network
+proteins_in_network = c("APOC3","APOE","APOC1","APOC2","PCYOX1","CLU")
+
+
+clinical_md = read_csv("00_r_input_data/clinical_metadata.csv")
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+# Defining the input metadata. Need to chose which columns to keep here. 
+md_assesment_data= protein_sum %>% 
+  filter(Condition != "Healthy") %>% 
+  inner_join(clinical_md, by = c("BioReplicate" = "sample_id")) %>% 
+  select(sample_id,Gene,bmi,bacteremia_duration,charleson_index,congestive_heart_failure,
+         death_during_admission,history_of_myocardial_infarction,transplant_type,pathogen,icu_admission,
+         hypotension,gender,race,smoking,polymicrobial_bacteremia,neutropenia_anc_1500,leukemia_or_lymphoma,Abundance) %>% 
+  ungroup()
+  
+
+source("functions.R")
+
+stat = metadata_assesment(md_assesment_data,
+                          metric = Gene,
+                          sample_id = sample_id,
+                          features = proteins_in_network,
+                          outcome = Abundance,
+                          outcome_c = "Abundance")
+
+
+  stat_final = rstatix::adjust_pvalue(stat,"p",output.col = "p.adj",method = "fdr") 
+
+
+
+## Plotting ###
+t = stat_final %>% 
+  ggplot(aes(reorder(variable,p.adj),-log10(p.adj)))+
+  geom_col()+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed", color = "red")+
+  coord_flip()+
+  facet_wrap(~Gene,nrow = 2) +
+  xlab("metadata_field")
+
+t
+
+
+plotlist = list()
+
+for(i in proteins_in_network){
+  
+  f = filter(md_assesment_data,Gene %in% i,
+             pathogen %in% c("faecalis","faecium"),
+             transplant_type == "none")
+  
+stat = f %>% 
+  rstatix::t_test(Abundance ~ pathogen,) %>% 
+  #rstatix::add_significance() %>% 
+  rstatix::add_xy_position(fun = "median")
+
+
+p1 = ggplot(f,aes(pathogen,Abundance)) + 
+  geom_violin()+
+  geom_point()+
+  ggtitle(i)+
+  ggpubr::stat_pvalue_manual(stat,)
+
+
+plotlist[[i]] = p1
+
+}
+  
+
+library(gridExtra)
+
+t2 = do.call("grid.arrange", plotlist,)
+```
+
+##? Are differentially abundant proteins the same ones that are different when comparing healthy to infected?
+
+
+```{r}
+
+
+healthy_v_infected = readr::read_csv("01_r_processed_data/Infected_vs_Healthy.csv") 
+
+
+up_in_infected = healthy_v_infected %>% 
+  filter(adj.pvalue <= 0.05,
+         log2FC>0) %>% 
+  pull(uniprotid)
+  
+  
+down_in_infected =  healthy_v_infected %>% 
+  filter(adj.pvalue <= 0.05,
+         log2FC<0) %>% 
+  pull(uniprotid)
+
+
+
+faecalis_v_faecium = readr::read_csv("01_r_processed_data/faecalis_v_faecium.csv") %>% 
+  left_join(protein_to_gene,by = c("uniprotid" = "ProteinID")) %>% 
+  mutate(also_in = case_when(uniprotid %in% up_in_infected ~ "infected",
+                             uniprotid %in% down_in_infected ~ "healthy",
+                             TRUE ~ "distinct"))
+
+  vp = faecalis_v_faecium %>% 
+  ggplot(aes(log2FC,-log10(adj.pvalue),color = also_in))+
+  geom_point(size = 0.5)+
+  geom_hline(yintercept = -log10(0.05),linetype = "dashed",color = "red")+
+  xlab("Log2FC Faecalis / Faecium")+
+  ggprism::theme_prism(base_size = 10)
+
+vp
+
+
+```
+
+
 # Figure 5 - Metabolomic Differences between Faecalis and Faecium Infected samples
 
 ## A - Volcano plot of data.
@@ -2119,99 +2241,9 @@ ggsave("02_figures/f5_faecalis_v_faecium_metabolomics/f5b.pdf",f5b,height = 8, w
 
 # Figure 6 - Prediction of Clinical Outcome
 
-## A- Unsupervised clustering of Proteomics and Metabolomic data combined
-
-```{r,fig.height = 8, fig.width = 12}
-##Proteomics data ##
-pl = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv") %>% 
-  select(tmt_id = sample_id,everything())
-
-## Clinical metadata ##
-map = readxl::read_excel("00_r_input_data/proteomics_sample_mapping.xlsx") %>% 
-  mutate(tmt_id = paste0("plex",plex_number,".",TMT_channel)) %>% 
-  select(tmt_id,sample_id = sample_name)
-
-md = read_csv("00_r_input_data/clinical_metadata.csv") 
-
-md_final = inner_join(map,md,by = "sample_id")
-
-clean_clinical = inner_join(pl,md_final, by = "tmt_id")
 
 
-
-clean_clinical_wide = clean_clinical %>% 
-  select(sample_id,death_during_admission,Gene,Abundance) %>% 
- tidyr::pivot_wider(names_from = Gene,
-              values_from = Abundance) %>% 
-  #removing the samples without death during admission info
-  filter(!is.na(death_during_admission)) %>% 
-  #filter(sample_id.y != "S49",
-         #sample_id.y != "S76") %>% 
-  dplyr::select_if(~ !any(is.na(.))) %>% 
-  #needs to be a dataframe or EFS freaks out. 
-  as.data.frame()
-
-
-
-### Combining all data ### 
-all= clean_clinical_wide
-
-# Getting into a format where we can do the clustering ## 
-clust_data = all[,3:283] %>% 
-   #Remove columns that only contain 0s 
-  select_if(colSums(.) != 0) %>% 
-  as.data.frame()
-
-annotation = all[,2] %>% 
-  as.data.frame()
-
-## Fixing the row names so they match for the heatmap ##
-rownames(annotation) = all$sample_id
-
-rownames(clust_data) = all$sample_id
-
-#calculating distance matrix
-d = dist(clust_data)
-## Generating a dendrogram without a heatmap ##
-library(dendextend)
-
-dend = as.dendrogram(hclust(d, method = "ward.D2"))
-
-# let's add some color: Red = dead, black = okay
-colors_to_use = c("#000000","#FF0000")[as.numeric(as.factor(all$death_during_admission))]
-
-#getting in the same order as dendrogram
-colors_to_use = colors_to_use[order.dendrogram(dend)]
-
-# Now we can color the brancehes
-dend = branches_color(dend,col = colors_to_use,) %>% 
-  set("branches_lwd", 8)
-
-# Plotting for manuscript
-pdf("02_figures/f6_prediction_of_clinical_outcome_proteomics/f6a.pdf",height = 8,
-    width = 12)
-plot(dend)
-dend %>% rect.dendrogram(k=2, 
-                           border = 8, lty = 5, lwd = 2)
-dev.off()
-
-#Plotting for this document
-plot(dend)
-dend %>% rect.dendrogram(k=2, 
-                           border = 8, lty = 5, lwd = 2)
-
-
-# Checking stats to see if there are significant differences between clusters when k=2
-xtab <- as.table(rbind(c(4, 8), c(13, 53)))
-dimnames(xtab) <- list(
-  group = c("k1", "k2"),
-  death = c("yes", "no")
-)
-
-fisher_test(xtab)
-```
-
-## B Volcano plot of Proteomics
+## A Volcano plot of Proteomics
 
 ```{r,eval = FALSE}
 ### Need to rerun msstats, this time changing the condition to be death upon admission ###
@@ -2339,7 +2371,7 @@ ggsave("02_figures/f6_prediction_of_clinical_outcome/f6b.pdf",f6b,height = 4, wi
 
 ```
 
-## D - GO Enrichment in Live
+## C - GO Enrichment in Live
 
 ```{r,fig.height = 4, fig.width = 4}
 #Getting all the go annotations 
@@ -3738,7 +3770,7 @@ save_pheatmap_png <- function(x, filename, width=12, height=8,res = 150) {
 
 #Have trouble manipulating the pdf in inkscape
 save_pheatmap_pdf(p,"03_supplemental/s9_sequencing_based_prediction_of_clinical_outcome/s9a.pdf")
-save_pheatmap_png(p,"03_supplemental/s9_sequencing_based_prediction_of_clinical_outcome/s9a.png")
+#save_pheatmap_png(p,"03_supplemental/s9_sequencing_based_prediction_of_clinical_outcome/s9a.png")
 
 
 
@@ -3782,7 +3814,7 @@ p2 = pheatmap(faecium_data,
 
 
 save_pheatmap_pdf(p2,"03_supplemental/s9_sequencing_based_prediction_of_clinical_outcome/s9b.pdf")
-save_pheatmap_png(p2,"03_supplemental/s9_sequencing_based_prediction_of_clinical_outcome/s9b.png")
+#save_pheatmap_png(p2,"03_supplemental/s9_sequencing_based_prediction_of_clinical_outcome/s9b.png")
 ```
 
 ## S10 - Checking Confounding Variables
@@ -3883,6 +3915,125 @@ s10b = do.call("grid.arrange", plotlist)
 
 ggsave("03_supplemental/s10_checking_confounding_variables/s10b.pdf",s10b)
 ```
+
+####C- Remaining Transplant Type associations
+
+```{r,fig.height =8, fig.width = 8}
+
+transplant_type_associated = c("APOC3","AZGP1","PCYOX1","RBP4","SERPINC1")
+
+md = read_csv("00_r_input_data/clinical_metadata.csv") 
+
+protein_sum = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+anot = read_csv("00_r_input_data/all_protein_annotations.csv")
+
+sum_annotated = left_join(protein_sum,anot,by = c("uniprotid" = "Entry")) %>% 
+  left_join(md,by = c("BioReplicate" = "sample_id")) %>% 
+  filter(Gene %in% transplant_type_associated,
+         transplant_type == "none")
+
+
+plotlist = list()
+
+for(i in transplant_type_associated){
+  
+  f = filter(sum_annotated,Gene %in% i)
+  
+stat = f %>% 
+  rstatix::t_test(Abundance ~ condition,) %>% 
+  #rstatix::add_significance() %>% 
+  rstatix::add_xy_position(fun = "median")
+
+
+p1 = ggplot(f,aes(condition,Abundance)) + 
+  geom_violin()+
+  geom_point()+
+  ggtitle(i)+
+  ggpubr::stat_pvalue_manual(stat,)
+
+
+plotlist[[i]] = p1
+
+}
+  
+
+library(gridExtra)
+
+s10c = do.call("grid.arrange", plotlist,)
+
+
+ggsave("03_supplemental/s10_checking_confounding_variables/s10c.pdf",s10c)
+```
+
+
+
+
+#### D- Metabolite Associations 
+
+```{r,fig.height =8, fig.width = 8}
+metabolomics_data = read_csv("01_r_processed_data/normalized_metabolomics.csv")
+
+gnps_annotations = read_csv("00_r_input_data/gnps_annotations.csv")
+
+
+m = inner_join(metabolomics_data,gnps_annotations,by = "row_id") %>% 
+  filter(condition != "Healthy",
+         transplant_type == "none")
+
+
+topn = read_csv("01_r_processed_data/top10_faecalis_v_faecium_metabolomics_biomarkers.csv") %>% 
+  pull(row_id)
+
+
+transplant_type_associated = c("RID_21931","RID_22049","RID_22413","RID_22552","RID_11530","RID_26935")
+
+
+plotlist = list()
+
+for(i in transplant_type_associated){
+  
+  f = filter(m,row_id %in% i)
+  
+  name= unique(f$compound_name_cleaned)
+  
+stat = f %>% 
+  rstatix::t_test(norm_value ~ condition) %>% 
+  rstatix::add_significance() %>% 
+  rstatix::add_xy_position()
+
+
+p1 = ggplot(f,aes(condition,norm_value)) + 
+  geom_violin()+
+  geom_point()+
+  ggtitle(paste0(name))+
+  ggpubr::stat_pvalue_manual(stat)
+
+
+plotlist[[i]] = p1
+
+}
+
+s10d = do.call("grid.arrange", plotlist,)
+
+ggsave("03_supplemental/s10_checking_confounding_variables/s10d.pdf",s10d)
+
+m
+
+```
+
+```{r}
+md = read_csv("00_r_input_data/clinical_metadata.csv") %>% 
+  filter(transplant_type == "none",
+        condition != "Healthy") %>% 
+  select(sample_id,condition,transplant_type)
+md
+```
+
+
+
+
+
 
 
 

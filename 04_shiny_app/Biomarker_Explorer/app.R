@@ -196,7 +196,7 @@ server <- function(input, output) {
       heatmaply::heatmaply(wide,scale = "column",
                            fontsize_col = 5,
                            fontsize_row = 5) %>% 
-        layout(height=800,width=1500)
+        layout(height=800,width=1000)
       
       
       
@@ -216,7 +216,8 @@ server <- function(input, output) {
                      yend = -log10(0.05), 
                      line = list(dash = "dash"),
                      color = "red") %>% 
-       layout(showlegend = FALSE)
+       layout(showlegend = FALSE,
+              xaxis = list(title = "Log2FC (Infected / Healthy)"))
      
      
      onRender(
@@ -324,7 +325,8 @@ server <- function(input, output) {
                      yend = -log10(0.05), 
                      line = list(dash = "dash"),
                      color = "red") %>% 
-        layout(showlegend = FALSE)
+        layout(showlegend = FALSE,
+               xaxis = list(title = "Log2FC (Faecalis / Faecium)"))
       onRender(
         p, "
   function(el) {
@@ -417,7 +419,8 @@ server <- function(input, output) {
                     yend = -log10(0.05), 
                     line = list(dash = "dash"),
                     color = "red") %>% 
-       layout(showlegend = FALSE)
+       layout(showlegend = FALSE,
+              xaxis = list(title = "Log2FC (Survival / Mortality)"))
      onRender(
        p, "
   function(el) {
@@ -535,12 +538,12 @@ server <- function(input, output) {
     
     output$hc2 = renderPlotly({
       
-      heatmaply::heatmaply(wide2,scale = "column",
+      heatmaply::heatmaply(wide2,
+                           scale = "column",
                            fontsize_col = 5,
                            fontsize_row = 5,
-                           showticklabels = c(FALSE, TRUE)
-      ) %>% 
-        layout(height=1500,width=1500)
+                           showticklabels = c(FALSE, TRUE)) %>% 
+        layout(height=1200,width=1200)
       
       
     })
@@ -557,7 +560,8 @@ server <- function(input, output) {
                      y = -log10(0.05),
                      yend = -log10(0.05), 
                      line = list(dash = "dash"),
-                     color = "red") 
+                     color = "red") %>% 
+        layout(xaxis = list(title = "Log2FC (Infected / Healthy)"))
       
       onRender(
         p, "
@@ -654,7 +658,8 @@ server <- function(input, output) {
                      y = -log10(0.05),
                      yend = -log10(0.05), 
                      line = list(dash = "dash"),
-                     color = "red")
+                     color = "red") %>% 
+        layout(xaxis = list(title = "Log2FC (Faecalis / Faecium)"))
       
       onRender(
         p, "
@@ -750,7 +755,8 @@ server <- function(input, output) {
                      y = -log10(0.05),
                      yend = -log10(0.05), 
                      line = list(dash = "dash"),
-                     color = "red")
+                     color = "red") %>% 
+        layout(xaxis = list(title = "Log2FC (Survival / Mortality)"))
       
       onRender(
         p, "
