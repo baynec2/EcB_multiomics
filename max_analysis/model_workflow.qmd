@@ -1,0 +1,224 @@
+---
+title: "Clinical Data Model"
+format: html
+editor: visual
+---
+
+```{r}
+#| label: load-libraries
+#| echo: false
+#| include: false
+library(dplyr)
+library(tidymodels)
+library(caret)
+library(broom)
+```
+
+```{r}
+#| label: load-clinical-metadata
+#| echo: false
+#| include: false
+clinical_metadata <- read.csv('clinical_metadata.csv')
+head(clinical_metadata)
+```
+
+```{r}
+#| label: filter-clinical
+#| echo: false
+#| include: true
+clinical_edited <- clinical_metadata %>%
+  select(sample_id, patient_id, condition, infection_status)
+clinical_edited
+```
+
+```{r}
+#| label: load-proteomics
+#| echo: false
+#| include: true
+proteomics_data <- read.csv('proteomics_data_cleaned.csv')
+
+proteomics_data
+```
+
+```{r}
+#| label: transpose-proteomics
+#| echo: false
+#| include: true
+proteomics_t <- as.data.frame(t(proteomics_data %>% 
+                  select(-orientation, -uniprotid, -locus)))
+colnames(proteomics_t) <- proteomics_t[1, ]
+proteomics_t <- proteomics_t[-1, ]
+proteomics_t[, ] <- lapply(proteomics_t[,], as.numeric)
+proteomics_t <- tibble::rownames_to_column(proteomics_t, var = "sample_id")
+proteomics_t
+```
+
+```{r}
+#| label: load-metabolomics
+#| echo: false
+#| include: true
+
+# Not really sure how to use this, so I am ignoring this for now
+metabolomics_data <- read.csv('metabolomics_data_cleaned.csv')
+
+metabolomics_data 
+```
+
+```{r}
+#| label: generate-model-data
+#| echo: false
+#| include: true
+model_data <- clinical_edited %>%
+  merge(proteomics_t, by = "sample_id")
+
+model_data
+```
+
+```{r}
+#| label: create-model-recipe
+#| echo: false
+#| include: false
+
+# Recipe does all of the feature engineering so that we don't have to do anything else to the input data
+model_recipe <- recipe(infection_status ~ ., data = model_data) %>%
+  update_role(sample_id, new_role = "id") %>% # id role tells the model not to actually incorporate it as a feature
+  update_role(patient_id, new_role = "id") %>%
+  update_role(condition, new_role = "id") %>%
+  update_role(infection_status, new_role = "outcome") %>% # specify target 
+  step_dummy(all_nominal_predictors()) %>% # convert string to dummy variables
+  step_normalize(all_numeric_predictors()) # normalize numeric features
+```
+
+```{r}
+#| label: generate-train-test-split
+#| echo: false
+#| include: true
+set.seed(42)
+# Create train/test split
+train_test_split <- initial_split(model_data,prop = 0.8, strata = infection_status)
+
+train_data <- training(train_test_split)
+test_data <- testing(train_test_split)
+```
+
+```{r}
+#| label: create-model-object
+#| echo: false
+#| include: true
+
+# Only doing a simple logistic regression since a tree-based model would most certainly overfit
+log_reg <- logistic_reg(
+  mixture = 1 # Lasso regression, using this to hopefully get rid of a lot of features that don't matter (sets coefficients of nonimportant features to 0, effectively removing them)
+  penalty = tune() # testing a few different penalty values
+) %>% 
+  set_engine("glmnet") 
+```
+
+```{r}
+#| label: generate-model-workflow
+#| echo: false
+#| include: true
+
+# Create model workflow that includes model recipe and model object
+model_workflow <- workflow() %>% 
+  add_recipe(model_recipe) %>% 
+  add_model(log_reg)
+```
+
+```{r}
+#| label: generate-model-tuning-parameters
+#| echo: false
+#| include: true
+set.seed(42)
+
+# 5 fold cross validation
+cv_folds <- vfold_cv(train_data, v = 5)
+
+# Tune the penalty parameter
+tune_res <- tune_grid(
+  model_workflow,
+  resamples = cv_folds,
+  grid = 5,     # Try 5 values of the penalty
+  metrics = metric_set(roc_auc, accuracy), # generate performance metrics for roc_auc & accuracy
+  control = control_grid(save_pred = TRUE)
+)
+```
+
+```{r}
+#| label: view-model-metrics
+#| echo: false
+#| include: true
+
+# ...almost all of them are really good?
+tune_res %>% 
+  collect_metrics()
+```
+
+```{r}
+#| label: create-final-workflow
+#| echo: false
+#| include: true
+
+# Show performance metrics and get the best model
+best_result <- tune_res %>%
+  collect_metrics() %>%
+  filter(.metric == "roc_auc") %>%
+  slice_max(mean, n = 1) %>%
+  head(1) # I have never had a tie for the best performing model, so I'm just grabbing the first one. Probably not the best strategy but this is new territory
+
+# Finalize the workflow using the model workflow and our best performing model
+final_workflow <- finalize_workflow(model_workflow, best_result)
+
+# Fit the Final Model on the Training Data
+fit_workflow <- fit(final_workflow, train_data)
+```
+
+```{r}
+#| label: view-model-coefficients
+#| echo: false
+#| include: true
+
+# Coefficients for features that seem to matter to the model, the rest have been set to 0 via the lasso regression
+model_summary <- tidy(fit_workflow)
+model_summary %>%
+  filter(estimate != 0)
+```
+
+```{r}
+#| label: test-set-predictions
+#| echo: false
+#| include: true
+
+# Get predictions on test data
+predictions <- predict(fit_workflow, test_data)
+```
+
+```{r}
+#| label: bind-predictions-and-test-data
+#| echo: false
+#| include: true
+
+# look at predictions on test data
+results <- bind_cols(predictions, test_data)
+
+results
+```
+
+```{r}
+#| label: test-confusion-matrix
+#| echo: false
+#| include: true
+
+# Generate confusion matrix on test data
+confusion_matrix <- confusionMatrix(as.factor(results$.pred_class), as.factor(results$infection_status))
+
+```
+
+```{r}
+#| label: view-confusion-matrix
+#| echo: false
+#| include: true
+
+# The model is performing very well, just one misclassification
+confusion_matrix$table
+```
