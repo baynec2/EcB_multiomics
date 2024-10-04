@@ -10,7 +10,7 @@
    xml:space="preserve"
    inkscape:version="1.2 (dc2aeda, 2022-05-15)"
    sodipodi:docname="S1.svg"
-   inkscape:export-filename="S1.png"
+   inkscape:export-filename="S1.pdf"
    inkscape:export-xdpi="96"
    inkscape:export-ydpi="96"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
@@ -28,8 +28,8 @@
      inkscape:document-units="mm"
      showgrid="false"
      inkscape:zoom="1.5004828"
-     inkscape:cx="417.53228"
-     inkscape:cy="627.46471"
+     inkscape:cx="339.55737"
+     inkscape:cy="628.13116"
      inkscape:window-width="1390"
      inkscape:window-height="847"
      inkscape:window-x="48"
@@ -1037,7 +1037,7 @@
            id="text2816"><tspan
              x="0"
              y="0"
-             id="tspan1393">MZMine3</tspan></text></g><g
+             id="tspan49625">MZMine3</tspan></text></g><g
          id="g2818"
          transform="matrix(2.9964747,0,0,2.9964747,1.4982374,1.4982374)"><path
            d="M 380,190 H 356.37"

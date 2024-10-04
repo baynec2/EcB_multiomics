@@ -2999,7 +2999,49 @@ ggsave("03_supplemental/s6_biomarkers_survival_v_mortality/s6c.pdf",s6c,height =
 ### D - Metabolomics ROC
 
 ```{r,fig.height = 6, fig.width = 16}
-s6d = make_roc_metabolomics(data)
+
+m2 = function(data,ncol=5){
+  
+  list = list()
+  
+  for(i in topn){
+  
+    
+    loop = filter(data, row_id == i)
+    
+    mod = glm(as.factor(condition) ~ norm_value, 
+              data = loop,
+              family = "binomial") 
+    
+    predicted <- predict(mod ,family = "binomial", loop, type="response")
+    
+     cn = loop %>% 
+      pull(compound_name_cleaned) %>% 
+      unique()
+    #define object to plot
+    rocobj <- pROC::roc(loop$condition, predicted)
+    
+    auc = round(as.numeric(gsub(".*: ", "",rocobj$auc)),2)
+    
+    #Dealing with long names 
+    wrapper <- function(x, ...) 
+    {
+      paste(strwrap(x, ...), collapse = "\n")
+    }
+    
+    #create ROC plot
+    p1 = pROC::ggroc(rocobj)+
+      ggtitle(paste0(cn," AUC: ",auc))
+    
+    
+    list[[i]] = p1
+  }
+  plot = do.call("grid.arrange",c(list, ncol = ncol))
+  
+  return(plot) 
+}
+
+s6d = m2(data)
 
 
 ggsave("03_supplemental/s6_biomarkers_survival_v_mortality/s6d.pdf",s6d,height = 6,width = 16)
