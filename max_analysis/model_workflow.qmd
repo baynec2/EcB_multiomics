@@ -108,7 +108,7 @@ test_data <- testing(train_test_split)
 
 # Only doing a simple logistic regression since a tree-based model would most certainly overfit
 log_reg <- logistic_reg(
-  mixture = 1 # Lasso regression, using this to hopefully get rid of a lot of features that don't matter (sets coefficients of nonimportant features to 0, effectively removing them)
+  mixture = 1, # Lasso regression, using this to hopefully get rid of a lot of features that don't matter (sets coefficients of nonimportant features to 0, effectively removing them)
   penalty = tune() # testing a few different penalty values
 ) %>% 
   set_engine("glmnet") 
