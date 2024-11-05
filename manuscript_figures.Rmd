@@ -155,7 +155,7 @@ ggsave("02_figures/f1_overview_of_study/f1b.pdf",plot = f1b, height = 2.5, width
 ### Figure 1C ###
 
 #Loading in mapping file
-mapping = readxl::read_excel("../proteomics/sample_mapping.xlsx")
+mapping = readxl::read_excel("00_r_input_data/proteomics_sample_mapping.xlsx")
 
 # Loading in the clinical metadata 
 cmd = read_csv("00_r_input_data/clinical_metadata.csv") %>% 
@@ -165,7 +165,7 @@ cmd = read_csv("00_r_input_data/clinical_metadata.csv") %>%
 mapping = inner_join(mapping,cmd,by = c("sample_name" = "sample_id"))
 
 #Loading in data
-data = read_delim("../proteomics/fragpipe_output_fixed_labels/tmt-report/abundance_gene_MD.tsv")
+data = read_delim("00_r_input_data/abundance_gene_MD.tsv")
 
 #Converting to long format
 long = data %>% 
@@ -1245,6 +1245,15 @@ topn_proteomics = tibble(Gene = topn)
 
 write_csv(topn_proteomics,"01_r_processed_data/top10_infected_v_healthy_proteomics_biomarkers.csv")
 
+
+
+# writing for shiny app
+shiny_out = top %>% 
+  tibble::rowid_to_column(var = "rank") %>% 
+  dplyr::rename(Feature = Gene)
+
+write_csv(shiny_out,"04_shiny_app/Biomarker_Explorer/www/healthy_prot_EFS_rank.csv")
+
 ```
 
 ### Plotting 
@@ -1696,6 +1705,11 @@ filtered = long %>%
 # f3d
 
 #ggsave("02_figures/f3_infection_v_healthy_metabolomics/f3d.pdf",f3d,height = 8,width = 8,units = "in")
+# writing for shiny app
+shiny_out = top %>% 
+  tibble::rowid_to_column(var = "rank") %>% 
+  dplyr::rename(Feature = row_id)
+write_csv(shiny_out,"04_shiny_app/Biomarker_Explorer/www/infected_metabolomics_EFS.csv")
 ```
 
 ### Plotting
@@ -1865,6 +1879,14 @@ ggsave("02_figures/f4_faecalis_v_faecium_proteomics/f4d.pdf",f4d,height = 3.8, w
 library(EFS)
 pl = read_csv("01_r_processed_data/quant_msstats_protein_level_data.csv") 
 
+#test
+
+pl %>% 
+  select(BioReplicate,Condition) %>% 
+  distinct() %>% 
+  pull(Condition) %>% 
+  table()
+
 clean = pl %>% 
   dplyr::group_by(Mixture,Gene,Channel,Condition) %>% 
   dplyr::summarise(sum = sum(Abundance))
@@ -1925,6 +1947,12 @@ write_csv(topn_proteomics,"01_r_processed_data/top10_faecalis_v_faecium_proteomi
 # f4d
 
 # ggsave("02_figures/f4_faecalis_v_faecium_proteomics/f4d.pdf",f4d,height = 8,width = 8)
+# writing for shiny app
+shiny_out = top %>% 
+  tibble::rowid_to_column(var = "rank") %>% 
+  dplyr::rename(Feature = Gene)
+
+write_csv(shiny_out,"04_shiny_app/Biomarker_Explorer/www/EcB_prot_EFS_rank.csv")
 ```
 
 ### Plotting
@@ -2213,6 +2241,12 @@ EFS_plot = filtered %>%
 EFS_plot
 
 #ggsave("02_figures/f5_faecalis_v_faecium_metabolomics/f5b.pdf",f5b,height = 8,width = 8)
+
+# writing for shiny app
+shiny_out = top %>% 
+  tibble::rowid_to_column(var = "rank") %>% 
+  dplyr::rename(Feature = row_id)
+write_csv(shiny_out,"04_shiny_app/Biomarker_Explorer/www/EcB_metabolomics_EFS.csv")
 ```
 
 mycophenolic acid and pc(17:1/0:0 + c25h51n1o7p1) were detected as two seperate row IDs. They were both found to be among the best biomarkers independantly from each other.
@@ -2337,7 +2371,7 @@ up_in_dead = sig %>%
 
 ## B - GO Enrichment in Dead
 
-```{r,fig.height = 4, fig.width = 4}
+```{r,fig.height = 6, fig.width = 6}
 #Getting all the go annotations 
 go = read_csv("00_r_input_data/go_annotations.csv") %>% 
   dplyr::select(1,length(.)) %>% 
@@ -2362,18 +2396,18 @@ enrich = clusterProfiler::enricher(up_in_dead,
          TERM2GENE = TERM2GENE,
          TERM2NAME = TERM2NAME)
 
-f6b = clusterProfiler::cnetplot(enrich, categorySize="pvalue",circular = FALSE,categorySize="pvalue",cex_label_category = 1,showCategory = 100,cex_label_gene = 0.5)+
+f6b = clusterProfiler::cnetplot(enrich, categorySize="pvalue",circular = FALSE,categorySize="pvalue",cex_label_category = 0.8,showCategory = 100,cex_label_gene = 0.5)+
   theme(legend.position = "none")
 
 f6b 
 
-ggsave("02_figures/f6_prediction_of_clinical_outcome/f6b.pdf",f6b,height = 4, width = 4)
+ggsave("02_figures/f6_prediction_of_clinical_outcome/f6b.pdf",f6b,height = 6, width = 6)
 
 ```
 
 ## C - GO Enrichment in Live
 
-```{r,fig.height = 4, fig.width = 4}
+```{r,fig.height = 6, fig.width = 6}
 #Getting all the go annotations 
 go = read_csv("00_r_input_data/go_annotations.csv") %>% 
   dplyr::select(1,length(.)) %>% 
@@ -2401,13 +2435,13 @@ enrich = clusterProfiler::enricher(up_in_live,
 f6c = clusterProfiler::cnetplot(enrich, categorySize="pvalue",
                               circular = FALSE,
                               categorySize="pvalue",
-                              cex_label_category = 1,
+                              cex_label_category = 0.8,
                               showCategory = 100,
                               cex_label_gene = 0.5, )+
   theme(legend.position = "none")
 f6c
 
-ggsave("02_figures/f6_prediction_of_clinical_outcome/f6c.pdf",f6c)
+ggsave("02_figures/f6_prediction_of_clinical_outcome/f6c.pdf",f6c,width = 6, height = 6)
 ```
 
 ## D - Proteomic Biomarkers to predict death
@@ -2431,8 +2465,8 @@ md_final = inner_join(map,md,by = "sample_id")
 clean_clinical = inner_join(pl,md_final, by = "tmt_id") %>% 
   # Don't need the healthy samples here
   filter(Condition != "Healthy") %>%
-  #IGKC gets identified by EFS even though it is a terrible biomarker. Not sure why, just going to remove it
-  filter(Gene != "IGKC") %>% 
+  #These get identified by EFS even though it is a terrible biomarker. Not sure why, just going to remove them
+  filter(Gene != "IGKC") %>%  filter(Gene != "SOD1") %>%  filter(Gene != "CD5L") %>% filter(Gene != "IGHM") %>% 
    # - messes up EFS for some reason, very annoying. 
   mutate(Gene = gsub("-","_",Gene)) %>% 
   select(sample_id,death_during_admission,Gene,Abundance) %>% 
@@ -2483,6 +2517,13 @@ EFS = filtered %>%
 
 
 EFS
+
+# writing for shiny app
+shiny_out = top %>% 
+  tibble::rowid_to_column(var = "rank") %>% 
+  dplyr::rename(Feature = Gene)
+
+write_csv(shiny_out,"04_shiny_app/Biomarker_Explorer/www/mortality_prot_EFS_rank.csv")
 ```
 
 
@@ -2626,17 +2667,23 @@ data = normalized_data %>%
   mutate(condition = as.character(death_during_admission))
 
 
-top = make_violin_plot_metabolomics(data,ncol = 2,topn = topn[1:2],pname = "p.signif")
+topvp = make_violin_plot_metabolomics(data,ncol = 2,topn = topn[1:2],pname = "p.signif")
 bottom = make_roc_metabolomics(data,ncol = 2)
 
 
 
 
-f6f = ggpubr::ggarrange(top,bottom,nrow = 2)
+f6f = ggpubr::ggarrange(topvp,bottom,nrow = 2)
 
 f6f
 ggsave("02_figures/f6_prediction_of_clinical_outcome/f6f.pdf",f6f,height = 8,width = 8)
 
+# writing for shiny app
+shiny_out = top %>% 
+  tibble::rowid_to_column(var = "rank") %>% 
+  dplyr::rename(Feature = row_id)
+
+write_csv(shiny_out,"04_shiny_app/Biomarker_Explorer/www/mortality_metabolomics_EFS.csv")
 
 ```
 
@@ -3186,7 +3233,7 @@ s7c = stat_final %>%
   geom_col()+
   geom_hline(yintercept = -log10(0.05),linetype = "dashed", color = "red")+
   coord_flip()+
-  facet_wrap(~Gene,nrow = 2) +
+  facet_wrap(~factor(Gene,topn),nrow = 2) +
   xlab("metadata_field")
 
 
@@ -3228,7 +3275,13 @@ stat = metadata_assesment(md_assesment_data,
 
 
   stat_final = rstatix::adjust_pvalue(stat,"p",output.col = "p.adj",method = "fdr") 
-
+  
+  
+  #ordering ids 
+  ordered = read_csv("01_r_processed_data/top10_live_v_dead_metabolomics_biomarkers.csv") %>% 
+  inner_join(gnps_annotations,by = "row_id") %>% 
+    select(row_id,compound_name_cleaned) %>% 
+    pull(compound_name_cleaned)
 
 
 ## Plotting ###
@@ -3238,7 +3291,7 @@ s7d = stat_final %>%
   geom_col()+
   geom_hline(yintercept = -log10(0.05),linetype = "dashed", color = "red")+
   coord_flip()+
-  facet_wrap(~compound_name_cleaned,nrow = 2) +
+  facet_wrap(~factor(compound_name_cleaned,ordered),nrow = 2) +
   xlab("metadata_field")
 
 s7d
@@ -4890,7 +4943,7 @@ write_csv(annotations,"gene_uniprot_annotations.csv")
 
 PTM Analysis - GNPS
 
-```{r,fig.height = 10, fig.width = 30}
+```{r,fig.height = 10, fig.width = 30, eval = FALSE}
 ## Reading in the PTM data from GNPS ## 
 ptm_data = read_delim("../metabolomics/ProteoSAFe-METABOLOMICS-SNETS-V2-3e73be4d-view_edges_delta_histogram/networkedges_selfloop/ae6d9d27f8684ad39b8e73b2d6f3da2e..selfloop",na = " ") %>% 
   mutate(DeltaMZ = abs(DeltaMZ)) 
@@ -4929,7 +4982,7 @@ ptm_data = read_delim("../metabolomics/ProteoSAFe-METABOLOMICS-SNETS-V2-3e73be4d
 
 GNPS table
 
-```{r}
+```{r,eval = FALSE}
 arranged_annotations = dplyr::arrange(annotations,-n)
 
 DT::datatable(arranged_annotations)
@@ -4940,12 +4993,12 @@ gridExtra::grid.table(arranged_annotations)
 dev.off()
 ```
 
-```{r}
+```{r,eval = FALSE }
 #total number of MS2 scans
 ms2_scans = read_delim("../proteomics/gnps/clusterinfo/93fdf96f02e44389b503c53353712f6a.clusterinfo") %>% 
   group_by(`#Filename`) %>% 
   summarise(n = n())
 
 
-27017 + 16665
+
 ```

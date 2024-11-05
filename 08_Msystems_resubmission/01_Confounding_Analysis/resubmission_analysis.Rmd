@@ -1,0 +1,281 @@
+---
+title: "Resubmission Analysis"
+author: "Charlie Bayne"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+        theme: cosmo
+        toc: true
+        toc_depth: 6
+        toc_float:
+            collapsed: true
+            smooth_scroll: true
+        code_folding: hide
+        highlight: tango
+        df_print: paged
+---
+
+
+```{r setup, include=FALSE, warning= FALSE}
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(tidyr)
+library(purrr)
+
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message = FALSE,cache = TRUE)
+
+#Setting ggplot2 theme, this isn't working for some reason
+theme_set(
+  ggprism::theme_prism()+
+  theme(plot.title = element_text(hjust = 0.5))
+  )
+
+#Setting ggplot2 theme, this one works
+#theme_set(
+ # theme_classic()+
+  #theme(plot.title = element_text(hjust = 0.5))
+  #)
+```
+
+
+
+# Reviewer 1 Comment 2
+
+## Proteomics
+
+```{r,fig.height = 4, fig.width = 7 }
+infected_vs_healthy = readr::read_csv("../../01_r_processed_data/Infected_vs_Healthy.csv") %>% 
+  dplyr::select(uniprotid,
+                infected_v_healthy_log2fc = log2FC,
+                infected_v_healthy_adj.p = adj.pvalue)
+
+
+death_vs_life = readr::read_csv("../../01_r_processed_data/death_vs_life.csv") %>% 
+  dplyr::select(uniprotid,
+                death_vs_life_log2fc = log2FC,
+                death_vs_life_adj.p = adj.pvalue) %>% 
+  mutate(death_vs_life_log2fc = death_vs_life_log2fc * -1)
+
+all = dplyr::inner_join(infected_vs_healthy,death_vs_life,by = "uniprotid") %>% 
+  mutate(direction = case_when(death_vs_life_log2fc * infected_v_healthy_log2fc > 0 ~ "same_direction",
+                                   TRUE ~ "different_direction"),
+         sig = case_when((infected_v_healthy_adj.p <= 0.05 & death_vs_life_adj.p <= 0.05) ~ "both",
+                         (infected_v_healthy_adj.p <= 0.05 & death_vs_life_adj.p > 0.05) ~ "infected_v_healthy",
+                         (infected_v_healthy_adj.p > 0.05 & death_vs_life_adj.p <= 0.05) ~ "death_v_life",
+                         TRUE ~ "neither")) %>% 
+  filter(uniprotid != "Q6UY14")
+
+lm = lm(data = all, infected_v_healthy_log2fc ~ death_vs_life_log2fc)
+summary(lm)
+
+p1 = all %>% 
+  #filter(sig == "both") %>% 
+  ggplot(aes(infected_v_healthy_log2fc,
+             death_vs_life_log2fc))+
+  geom_point(aes(color = direction))+
+  geom_abline(slope = 1, linetype = "dashed")+
+  geom_smooth(method = "lm")+
+  ggtitle("All Proteins")+
+  xlab("log2(Infected/Healthy)")+
+  ylab("log2(Mortality/Survival)")
+  
+
+t1 = gridExtra::tableGrob(as.data.frame(table(all$direction)))
+
+## Sig only ##
+
+sig = all %>% 
+  filter(sig == "both")
+
+
+lm = lm(data = sig, infected_v_healthy_log2fc ~ death_vs_life_log2fc)
+summary(lm)
+
+p2 = sig %>% 
+  #filter(sig == "both") %>% 
+  ggplot(aes(infected_v_healthy_log2fc,
+             death_vs_life_log2fc))+
+  geom_point(aes(color = direction))+
+  geom_smooth(method = "lm")+
+  geom_abline(slope = 1, linetype = "dashed")+
+  ggtitle("Proteins p.adj <= 0.05")+
+  xlab("log2(Infected/Healthy)")+
+  ylab("log2(Mortality/Survival)")
+t2 = gridExtra::tableGrob(as.data.frame(table(sig$direction)))
+
+
+p3 = ggpubr::ggarrange(p1,p2,common.legend = TRUE,legend = "bottom")
+
+
+p3
+
+ggsave("proteomics_correlation.pdf",p3, height = 4, width = 8)
+
+ggsave("proteomics_table.pdf",t2)
+
+
+```
+
+
+## Metabolomics 
+
+```{r,fig.height =6, fig.width = 12}
+## Healthy Metabolomics ## 
+gnps_annotations = read_csv("../../00_r_input_data/gnps_annotations.csv",na = c("N/A","NA")) %>% 
+  select(row_id,compound_name_cleaned)
+## Reading in the normalized metabolomics data ##
+normalized_data = read_csv("../../01_r_processed_data/normalized_metabolomics.csv")
+
+normalized_data = inner_join(gnps_annotations,normalized_data,by = "row_id")
+
+# Performing statistics so we can make a volcano plot
+  stat = normalized_data %>%
+    dplyr::group_by(row_id,compound_name_cleaned) %>%
+    rstatix::t_test(norm_value ~ infection_status) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+
+
+# Extracting the values for each feature for healthy patients
+healthy = normalized_data %>% 
+  filter(infection_status == "uninfected") %>% 
+  group_by(row_id,compound_name_cleaned) %>% 
+  summarise(healthy = mean(norm_value))
+
+
+# Extracting the values for each feature for infected patients
+infected = normalized_data %>% 
+  filter(infection_status == "infected") %>% 
+  group_by(row_id,compound_name_cleaned) %>% 
+  summarise(infected = mean(norm_value))
+
+
+## Combining the healthy and infected so we can caclulated the log2fc ##
+log2fc = inner_join(healthy,infected,by = "row_id") %>% 
+  mutate(log2fc_infected_healthy = log2(infected/healthy))
+  
+
+## Joining the statistics and log2 fold change ##  
+healthy = inner_join(stat,log2fc,by = "row_id")  %>% 
+
+  select(row_id,
+         log2fc_infected_healthy,
+         p.adj_fdr_health =p.adj_fdr)
+
+
+### Survival vs Mortality ###
+
+## Reading in Data
+normalized_data = read_csv("../../01_r_processed_data/normalized_metabolomics.csv") %>% 
+  filter(!is.na(death_during_admission))
+
+normalized_data = inner_join(gnps_annotations,normalized_data,by = "row_id")
+
+# Performing statistics so we can make a volcano plot
+  stat = normalized_data %>% 
+    dplyr::group_by(row_id,compound_name_cleaned) %>%
+    rstatix::t_test(norm_value ~ death_during_admission) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+
+# Calculating log2fc
+log2fc_data = normalized_data %>%  
+    dplyr::select(metabolomics_id,row_id,compound_name_cleaned,death_during_admission,norm_value) 
+
+# Extracting just the faecalis data
+dead = log2fc_data %>% 
+  filter(death_during_admission == TRUE) %>% 
+  group_by(row_id,compound_name_cleaned) %>% 
+  summarise(dead = mean(norm_value))
+
+# Extracting just the faecium data 
+live = log2fc_data %>% 
+  filter(death_during_admission == FALSE) %>% 
+  group_by(row_id,compound_name_cleaned) %>% 
+  summarise(live = mean(norm_value))
+
+# Calculating log2fc
+log2fc = inner_join(dead,live,by = "row_id") %>% 
+  mutate(log2fc_dead_live = log2(dead/live))
+  
+# Combining log2fc and statistics 
+mort = inner_join(stat,log2fc,by = "row_id")  %>% 
+  select(row_id,
+         log2fc_dead_live,
+         p.adj_fdr_mort =p.adj_fdr,
+         compound_name_cleaned)
+
+
+
+all = inner_join(mort,healthy, by = "row_id") %>% 
+    mutate(direction = case_when(log2fc_infected_healthy * log2fc_dead_live > 0 ~ "same_direction",
+                                   TRUE ~ "different_direction")) %>% 
+  mutate(sig = case_when((p.adj_fdr_mort <= 0.05 & p.adj_fdr_health <= 0.05) ~ "both",
+                         (p.adj_fdr_health <= 0.05 & p.adj_fdr_mort > 0.05) ~ "infected_v_healthy",
+                         (p.adj_fdr_health > 0.05 & p.adj_fdr_mort <= 0.05) ~ "death_v_life",
+                         TRUE ~ "neither"))
+  
+
+expected_confounders = c("dibutyl phthalate","phthalic anhydride")
+
+expected_true = c("cholic_acid",
+                  "taurocholic acid",
+                  "glycocholic acid",
+                  "tauroursodeoxycholic acid",
+                  "taurohyodeoxycholic acid")
+
+labs = all %>% 
+  filter(compound_name_cleaned %in% c(expected_true,expected_confounders))
+
+lm = lm(data = all, log2fc_infected_healthy ~ log2fc_dead_live)
+summary(lm)
+
+
+p1 = all %>% 
+  ggplot(aes(log2fc_infected_healthy,log2fc_dead_live))+
+  geom_point(aes(color = direction))+
+  geom_abline(slope = 1, linetype = "dashed")+
+  ggrepel::geom_text_repel(data = labs, aes(label = compound_name_cleaned), size = 2)+
+  geom_smooth(method = "lm")+
+  ggtitle("All Annotated Metabolites") + 
+  xlab("log2(Infected/Healthy)")+
+  ylab("log2(Mortality/Survival)")
+
+p1
+
+
+
+t1 = gridExtra::tableGrob(as.data.frame(table(all$direction)))
+
+sig = all %>% 
+  filter(sig == "both")
+
+lm = lm(data = sig, log2fc_infected_healthy ~ log2fc_dead_live)
+summary(lm)
+
+p2 = sig %>% 
+  ggplot(aes(log2fc_infected_healthy,log2fc_dead_live))+
+  geom_point(aes(color = direction))+
+  geom_abline(slope = 1, linetype = "dashed")+
+  ggrepel::geom_text_repel(aes(label = compound_name_cleaned), size = 2)+
+  geom_smooth(method = "lm")+
+  ggtitle("Metabolites p.adj <= 0.05")+
+  xlab("log2(Infected/Healthy)")+
+  ylab("log2(Mortality/Survival)")
+
+p2
+
+t2 = gridExtra::tableGrob(as.data.frame(table(sig$direction)))
+
+p3 = ggpubr::ggarrange(p1,p2,common.legend = TRUE,legend = "bottom")
+
+p3
+
+ggsave("metabolomics_correlation.pdf",p3, height = 4, width = 8)
+
+ggsave("metabolomics_table.pdf",t2)
+
+```
+
+
+
+
