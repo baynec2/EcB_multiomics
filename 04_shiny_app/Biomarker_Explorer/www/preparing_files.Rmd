@@ -1,0 +1,242 @@
+---
+title: "fixing files"
+output: html_document
+date: "2024-03-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(readr)
+library(ggpubr)
+library(tidyverse)
+```
+
+```{r}
+## Fixing the stats files ##
+ protein_to_gene = readr::read_csv("../../../00_r_input_data/protein_id_to_gene.csv")
+  gene_description = read_csv("../../../00_r_input_data/all_protein_annotations.csv")
+  ## Loading all the data that will be needed ### 
+    healthy = read_csv("../../../01_r_processed_data/Infected_vs_Healthy.csv") %>% 
+      left_join(protein_to_gene,by = c("uniprotid" = "ProteinID")) %>% 
+      left_join(gene_description, by = c("uniprotid" = "Entry")) %>% 
+      mutate(url = paste0("https://www.uniprot.org/uniprotkb/",uniprotid,"/entry")) %>% 
+      rename(Feature = Gene,
+             Description = Protein.names)
+    
+    
+    EcB = read_csv("../../../01_r_processed_data/faecalis_v_faecium.csv") %>% 
+      left_join(protein_to_gene,by = c("uniprotid" = "ProteinID"))%>% 
+      left_join(gene_description, by = c("uniprotid" = "Entry")) %>% 
+      mutate(url = paste0("https://www.uniprot.org/uniprotkb/",uniprotid,"/entry")) %>% 
+      rename(Feature = Gene,
+             Description = Protein.names)
+    
+    
+    mortality = read_csv("../../../01_r_processed_data/death_vs_life.csv") %>% 
+      select(-Gene) %>% 
+      left_join(protein_to_gene,by = c("uniprotid" = "ProteinID"))%>% 
+      left_join(gene_description, by = c("uniprotid" = "Entry")) %>% 
+      mutate(url = paste0("https://www.uniprot.org/uniprotkb/",uniprotid,"/entry")) %>% 
+      rename(Feature = Gene,
+             Description = Protein.names)
+    
+    
+   
+write_csv(healthy,"Infected_vs_Healthy.csv")
+write_csv(EcB,"faecalis_v_faecium.csv")
+write_csv(mortality,"death_vs_life.csv")
+    
+```
+
+```{r}
+## Fixing the continuous data files ## 
+
+data = read_csv("../../../01_r_processed_data/quant_msstats_protein_level_data.csv")
+
+
+#Loading in mapping file
+mapping = readxl::read_excel("../../../00_r_input_data/proteomics_sample_mapping.xlsx") %>% 
+  mutate(sample_id = paste0("plex",plex_number,".",TMT_channel)) %>% 
+  select(sample_id,sample_name)
+
+# Loading in the clinical metadata 
+cmd = read_csv("../../../00_r_input_data/clinical_metadata.csv")
+
+
+mapping = inner_join(mapping,cmd,by = c("sample_name" = "sample_id"))
+
+#Loading in data
+
+
+data_md = inner_join(mapping,data,by = "sample_id")
+
+
+#Converting into a matrix
+f = data_md %>% 
+  dplyr::select(sample_name,condition,death_during_admission,Gene,Abundance) %>% 
+  dplyr::rename(Feature = Gene)
+
+
+
+
+write_csv(f,"protein_data.csv")
+
+```
+
+
+# Generating stats for all the data
+
+```{r}
+gnps_annotations = read_csv("../../../00_r_input_data/gnps_annotations.csv")
+normalized_data = read_csv("../../../01_r_processed_data/normalized_metabolomics.csv")
+
+### Infected vs Healthy ###
+
+  stat = normalized_data %>%
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ infection_status) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+
+  # Extracting the values for each feature for healthy patients
+healthy = normalized_data %>% 
+  filter(infection_status == "uninfected") %>% 
+  group_by(row_id) %>% 
+  summarise(healthy = mean(norm_value))
+
+
+# Extracting the values for each feature for infected patients
+infected = normalized_data %>% 
+  filter(infection_status == "infected") %>% 
+  group_by(row_id) %>% 
+  summarise(infected = mean(norm_value))
+
+
+## Combining the healthy and infected so we can caclulated the log2fc ##
+log2fc = inner_join(healthy,infected,by = "row_id") %>% 
+  mutate(log2fc_infected_healthy = log2(infected/healthy))
+  
+
+## Joining the statistics and log2 fold change ##  
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  left_join(gnps_annotations, by = "row_id") %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE)) %>% 
+  select(row_id = row_id,Feature = compound_name_cleaned,log2FC = log2fc_infected_healthy,pvalue = p,adj.pvalue = p.adj_fdr,annotated) %>% 
+  mutate(url = paste0("https://pubchem.ncbi.nlm.nih.gov/compound/",Feature)) %>% 
+  mutate(url = case_when(url == "https://pubchem.ncbi.nlm.nih.gov/compound/NA" ~
+                           "https://pubchem.ncbi.nlm.nih.gov/compound/no_name_in_data",
+                         TRUE ~ url))
+
+
+write_csv(vp,"healthy_vs_infected_metabolomics.csv")
+  
+
+
+
+### Faecalis vs Faecium ###
+  stat = normalized_data %>%
+    filter(condition %in% c("faecalis","faecium")) %>% 
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ condition) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+  
+  # Calculating log2fc
+log2fc_data = normalized_data %>%  
+    dplyr::select(metabolomics_id,row_id,condition,norm_value) 
+  
+  # Extracting just the faecalis data
+faecalis = log2fc_data %>% 
+  filter(condition == "faecalis") %>% 
+  group_by(row_id) %>% 
+  summarise(faecalis = mean(norm_value))
+
+# Extracting just the faecium data 
+faecium = log2fc_data %>% 
+  filter(condition == "faecium") %>% 
+  group_by(row_id) %>% 
+  summarise(faecium = mean(norm_value))
+
+# Calculating log2fc
+log2fc = inner_join(faecalis,faecium,by = "row_id") %>% 
+  mutate(log2fc_faecalis_faecium = log2(faecalis/faecium))
+  
+# Combining log2fc and statistics 
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  left_join(gnps_annotations, by = "row_id") %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE)) %>% 
+  select(row_id = row_id,Feature = compound_name_cleaned,log2FC = log2fc_faecalis_faecium,pvalue = p,adj.pvalue = p.adj_fdr,annotated) %>% 
+  mutate(url = paste0("https://pubchem.ncbi.nlm.nih.gov/compound/",Feature)) %>% 
+  mutate(url = case_when(url == "https://pubchem.ncbi.nlm.nih.gov/compound/NA" ~
+                           "https://pubchem.ncbi.nlm.nih.gov/compound/no_name_in_data",
+                         TRUE ~ url))
+
+
+write_csv(vp,"faecalis_v_faecium_metabolomics.csv")
+
+### Mortality vs Survival ###  
+  
+    stat = normalized_data %>% 
+    dplyr::group_by(row_id) %>%
+    rstatix::t_test(norm_value ~ death_during_admission) %>%
+    rstatix::adjust_pvalue(p.col = "p",output.col = "p.adj_fdr", method = "fdr")
+    
+    # Calculating log2fc
+log2fc_data = normalized_data %>%  
+    dplyr::select(metabolomics_id,row_id,death_during_admission,norm_value) 
+
+
+# Extracting just the faecalis data
+dead = log2fc_data %>% 
+  filter(death_during_admission == TRUE) %>% 
+  group_by(row_id) %>% 
+  summarise(dead = mean(norm_value))
+
+# Extracting just the faecium data 
+live = log2fc_data %>% 
+  filter(death_during_admission == FALSE) %>% 
+  group_by(row_id) %>% 
+  summarise(live = mean(norm_value))
+
+# Calculating log2fc
+log2fc = inner_join(dead,live,by = "row_id") %>% 
+  mutate(log2fc_live_dead = log2(live/dead))
+  
+# Combining log2fc and statistics 
+# Combining log2fc and statistics 
+vp = inner_join(stat,log2fc,by = "row_id")  %>% 
+  left_join(gnps_annotations, by = "row_id") %>% 
+  mutate(annotated = case_when(row_id %in% gnps_annotations$row_id ~ TRUE,
+                               TRUE ~ FALSE)) %>% 
+  select(row_id = row_id,Feature = compound_name_cleaned,log2FC = log2fc_live_dead,pvalue = p,adj.pvalue = p.adj_fdr,annotated) %>% 
+  mutate(url = paste0("https://pubchem.ncbi.nlm.nih.gov/compound/",Feature)) %>% 
+  mutate(url = case_when(url == "https://pubchem.ncbi.nlm.nih.gov/compound/NA" ~
+                           "https://pubchem.ncbi.nlm.nih.gov/compound/no_name_in_data",
+                         TRUE ~ url))
+
+write_csv(vp,"death_vs_life_metabolomics.csv")
+
+```
+
+
+
+
+# Continuous data for metabolomics 
+
+
+```{r}
+
+gnps_annotations = read_csv("../../../00_r_input_data/gnps_annotations.csv") %>% 
+  select(row_id, compound_name_cleaned)
+ 
+data = read_csv("../../../01_r_processed_data/normalized_metabolomics.csv") %>% 
+  select(row_id,sample_id,condition,death_during_admission,Abundance = norm_value) %>% 
+  inner_join(gnps_annotations, by = "row_id") %>% 
+  rename(Feature = row_id) %>% 
+  select(Feature,compound_name_cleaned, sample_name = sample_id, everything())
+
+
+write_csv(data,"normalized_metabolomics.csv")
+```
+
